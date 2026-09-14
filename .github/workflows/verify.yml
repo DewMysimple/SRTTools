@@ -1,0 +1,25 @@
+name: Verify and package
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - run: python wiki_memory/工具/test_memory_lint.py
+      - run: python wiki_memory/工具/memory_lint.py check
+      - run: python tools/build.py
+      - name: Verify frozen GUI
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath '.\dist\SRTTools\SRTTools.exe' -ArgumentList '--smoke-test', '.\artifacts\frozen\workspace.png' -WindowStyle Hidden -Wait -PassThru
+          if ($app.ExitCode -ne 0) { throw 'Frozen application smoke test failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SRTTools-Windows
+          path: dist/SRTTools.zip

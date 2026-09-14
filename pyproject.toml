@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "srttools"
+version = "1.0.0"
+description = "Windows Chinese subtitle conversion and range export tool"
+requires-python = ">=3.14"
+dependencies = ["PySide6==6.11.2"]
+
+[project.scripts]
+srttools = "srttools.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["srttools*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
