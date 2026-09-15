@@ -21,7 +21,12 @@ jobs:
         shell: pwsh
         run: |
           $app = Start-Process -FilePath '.\dist\SRTTools\SRTTools.exe' -ArgumentList '--smoke-test', '.\artifacts\frozen\workspace.png' -WindowStyle Hidden -Wait -PassThru
-          if ($app.ExitCode -ne 0) { throw 'Frozen application smoke test failed' }
+          if ($app.ExitCode -ne 0) {
+            if (Test-Path '.\artifacts\frozen\workspace.error.txt') {
+              Get-Content -LiteralPath '.\artifacts\frozen\workspace.error.txt'
+            }
+            throw 'Frozen application smoke test failed'
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: SRTTools-Windows
