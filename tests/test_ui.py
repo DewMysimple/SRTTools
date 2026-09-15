@@ -74,7 +74,7 @@ def test_all_pages_width_and_scroll_to_actions(app, window):
             app.processEvents()
             scroll = window.stack.widget(i)
             assert scroll.horizontalScrollBar().maximum() == 0
-            if height >= 900:
+            if window.height() >= 900:
                 assert scroll.verticalScrollBar().maximum() == 0
             scroll.ensureWidgetVisible(page.export_button)
             app.processEvents()

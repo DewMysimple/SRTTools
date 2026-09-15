@@ -78,8 +78,13 @@ def run_smoke(app, window, screenshot: Path):
                 scroll = window.stack.widget(i)
                 assert scroll.horizontalScrollBar().maximum() == 0, (width, height, i)
                 assert window.pages[i].table.horizontalScrollBar().maximum() == 0
-                if height >= 900:
-                    assert scroll.verticalScrollBar().maximum() == 0
+                # Hosted Windows desktops can clamp a requested 900px window
+                # to the available screen. Judge scrolling by the actual size.
+                if window.height() >= 900:
+                    assert scroll.verticalScrollBar().maximum() == 0, (
+                        mode, (width, height), (window.width(), window.height()),
+                        scroll.verticalScrollBar().maximum(),
+                    )
                 scroll.ensureWidgetVisible(window.pages[i].export_button)
                 app.processEvents()
                 button = window.pages[i].export_button
