@@ -26,8 +26,11 @@ def run_smoke(app, window, screenshot: Path):
         source = root / "演示字幕.srt"
         source.write_text(DEMO, encoding="utf-8", newline="")
         raw = source.read_bytes()
-        for i, page in enumerate(window.pages):
+        for i, mode in ((0, "raw"), (0, "text"), (0, "clean"), (1, "range")):
+            page = window.pages[i]
             window.navigation.setCurrentRow(i)
+            if mode != "range":
+                page.mode_choice.setCurrentIndex(page.mode_choice.findData(mode))
             page.add_files([source])
             page.output.setText(str(root))
             if page.mode == "range":
@@ -47,15 +50,15 @@ def run_smoke(app, window, screenshot: Path):
         cropped = (root / "演示字幕_range.srt").read_text(encoding="utf-8")
         assert "00:00:00,000 --> 00:00:02,000" in cropped
         assert "范围之外" not in cropped
-        # Exercise previously-converted TXT on the actual cleanup page.
-        page = window.pages[2]
+        # Exercise previously-converted TXT in the shared conversion workbench.
+        page = window.pages[0]
         page.clear_files()
         page.add_files([root / "演示字幕_original.txt"])
         page.prepare()
         wait_task(app, window)
         assert "-->" not in page.results[0].preview
         # Range TXT uses the same selected cues and exposes cleanup controls.
-        page = window.pages[3]
+        page = window.pages[1]
         page.output_format.setCurrentIndex(1)
         page.strip_tags.setChecked(True)
         page.prepare()
@@ -67,28 +70,40 @@ def run_smoke(app, window, screenshot: Path):
 
         for width, height in ((980, 620), (1180, 900), (1600, 1000)):
             window.resize(width, height)
-            for i in range(4):
+            for i, mode in ((0, "raw"), (0, "text"), (0, "clean"), (1, "range")):
                 window.navigation.setCurrentRow(i)
+                if mode != "range":
+                    window.pages[i].mode_choice.setCurrentIndex(window.pages[i].mode_choice.findData(mode))
                 app.processEvents()
                 scroll = window.stack.widget(i)
                 assert scroll.horizontalScrollBar().maximum() == 0, (width, height, i)
                 assert window.pages[i].table.horizontalScrollBar().maximum() == 0
-                assert window.grab().save(str(screenshot.with_name(f"page-{i}-{width}.png")))
+                if height >= 900:
+                    assert scroll.verticalScrollBar().maximum() == 0
+                scroll.ensureWidgetVisible(window.pages[i].export_button)
+                app.processEvents()
+                button = window.pages[i].export_button
+                assert scroll.viewport().rect().contains(button.mapTo(scroll.viewport(), button.rect().center()))
+                assert window.grab().save(str(screenshot.with_name(f"page-{mode}-{width}.png")))
         window.showMaximized()
         app.processEvents()
-        for i in range(4):
+        for i in range(len(window.pages)):
             window.navigation.setCurrentRow(i)
             app.processEvents()
             assert window.stack.widget(i).horizontalScrollBar().maximum() == 0
         window.showNormal()
         window.resize(1180, 900)
-        window.navigation.setCurrentRow(3)
-        page.output_format.setCurrentIndex(0)
+        window.navigation.setCurrentRow(0)
+        page = window.pages[0]
+        page.clear_files()
+        page.add_files([source])
+        page.mode_choice.setCurrentIndex(1)
+        page.strip_tags.setChecked(True)
         page.prepare()
         wait_task(app, window)
         # Remove temporary private paths from documentation captures.
         page.output.setText("导出文件夹（点击「输出位置…」选择）")
         window.logs.clear()
-        window.log("预览完成：1 个有效文件，范围内 3 条字幕。")
+        window.log("预览完成：1 个有效文件，已提取 4 条字幕正文。")
         app.processEvents()
         assert window.grab().save(str(screenshot))

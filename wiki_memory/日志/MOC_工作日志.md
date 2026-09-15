@@ -3,7 +3,7 @@ type: moc
 status: active
 kind: process
 importance: high
-updated: 2026-09-14
+updated: 2026-09-15
 topic: work-log-index
 source_logs: []
 supersedes: null
@@ -15,6 +15,7 @@ supersedes: null
 
 | 时间 | 类型 | 目标 | 状态 | 主题 | 日志 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-15 | ui | - | draft | unified-text-workbench | [合并文本转换工作台](./2026-09-15-合并文本转换工作台.md) |
 | 2026-09-14 | feature | 实现用户四项字幕处理与实用补充能力，建立独立工程、工程记忆、文档和远程管理。 | archived | initial-release | [SRTTools 首版构建](./2026-09-14-SRTTools首版构建.md) |
 | 2026-09-14 | bug | 完成首版 GitHub Windows 自动验收，修复英文系统的中文输出失败。 | archived | ci-output-encoding | [CI 中文输出编码修复](./2026-09-14-CI中文输出编码修复.md) |
 
