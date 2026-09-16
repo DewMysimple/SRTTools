@@ -18,14 +18,10 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .service import Failure, Options, Prepared, export_batch, prepare_batch
 from .subtitles import parse_time
+from .workbench import SrtWorkbench
 
-TEXT_MODES = (
-    ("raw", "原样转 TXT", "只换扩展名，保留序号、时间轴、编码和换行。"),
-    ("text", "SRT 提取正文", "去除序号与时间轴，把字幕变成可阅读的文本。"),
-    ("clean", "TXT 字幕清理", "清理 TXT 中残留的 SRT 时间轴与序号，保留正文。"),
-)
 FEATURES = (
-    ("raw", "文本转换", "在同一工作台切换处理方式，文件列表与输出位置保持不变。"),
+    ("workbench", "SRT 综合工作台", ""),
     ("range", "时间范围导出", "截取指定时间段，导出新的 SRT 或纯文本。"),
 )
 
@@ -40,6 +36,7 @@ QListWidget#navigation::item { padding: 14px 10px; margin: 3px 0; border-radius:
 QListWidget#navigation::item:selected { background: #28506a; color: white; }
 QLabel#pageTitle { font-size: 21pt; font-weight: 700; color: #142e40; }
 QLabel#hint { color: #52697d; }
+QFrame#taskCard { background: #ffffff; border: 1px solid #d5dee7; border-radius: 7px; }
 QPushButton { padding: 7px 14px; background: white; border: 1px solid #cad5df; border-radius: 6px; }
 QPushButton:hover { background: #eaf3f7; border-color: #438395; }
 QPushButton#primary { background: #166b79; color: white; border: none; font-weight: 600; }
@@ -99,21 +96,12 @@ class FeaturePage(QWidget):
         control_layout = QVBoxLayout(self.controls)
         control_layout.setContentsMargins(0, 4, 0, 4)
         toolbar = QHBoxLayout()
-        self.mode_choice = combo([(label, value) for value, label, _ in TEXT_MODES])
-        if mode != "range":
-            toolbar.addWidget(QLabel("处理方式"))
-            toolbar.addWidget(self.mode_choice, 1)
-        else:
-            toolbar.addStretch()
+        toolbar.addStretch()
         self.reset_button = QPushButton("重置选项")
         self.reset_button.setToolTip("恢复当前处理方式的默认选项；保留文件列表、处理方式和输出位置")
         self.reset_button.clicked.connect(self.reset_options)
         toolbar.addWidget(self.reset_button)
         control_layout.addLayout(toolbar)
-        self.mode_hint = QLabel()
-        self.mode_hint.setObjectName("hint")
-        self.mode_hint.setVisible(mode != "range")
-        control_layout.addWidget(self.mode_hint)
         buttons = QHBoxLayout()
         add = QPushButton("＋ 添加文件")
         add.clicked.connect(self.choose_files)
@@ -226,14 +214,7 @@ class FeaturePage(QWidget):
             widget.toggled.connect(self.invalidate)
         self.offset.valueChanged.connect(self.invalidate)
         self.output_format.currentIndexChanged.connect(self.adjust_text_options)
-        self.mode_choice.currentIndexChanged.connect(self.change_mode)
-        self.mode_choice.setCurrentIndex(max(0, self.mode_choice.findData(mode)))
         self.adjust_text_options()
-
-    def change_mode(self):
-        self.mode = self.mode_choice.currentData()
-        self.adjust_text_options()
-        self.invalidate()
 
     def adjust_text_options(self):
         enabled = self.mode != "raw" and (self.mode != "range" or self.output_format.currentData() == "txt")
@@ -242,9 +223,6 @@ class FeaturePage(QWidget):
         self.strip_tags.setEnabled(enabled)
         self.encoding_label.setText("预览编码" if self.mode == "raw" else "输入编码")
         self.output_encoding.setToolTip("原样模式保留来源编码，不使用输出文本设置。" if self.mode == "raw" else "导出文件使用的编码")
-        for value, _, description in TEXT_MODES:
-            if self.mode == value:
-                self.mode_hint.setText(description)
 
     def reset_options(self):
         for widget in (self.encoding, self.output_encoding, self.layout_choice, self.policy, self.output_format):
@@ -434,7 +412,7 @@ class MainWindow(QMainWindow):
         self.pages = []
         for mode, title, description in FEATURES:
             self.navigation.addItem(title)
-            page = FeaturePage(mode, title, description, self)
+            page = SrtWorkbench(self) if mode == "workbench" else FeaturePage(mode, title, description, self)
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setWidget(page)

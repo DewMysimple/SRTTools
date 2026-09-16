@@ -1,4 +1,4 @@
-"""Exercise all four real GUI workflows on generated, disposable input."""
+"""Exercise real combinable workspace and range workflows on disposable data."""
 from pathlib import Path
 import tempfile
 import time
@@ -23,73 +23,96 @@ def run_smoke(app, window, screenshot: Path):
     screenshot.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="srttools-smoke-") as directory:
         root = Path(directory)
-        source = root / "演示字幕.srt"
+        inputs = root / "input"
+        inputs.mkdir()
+        lesson = inputs / "课程一"
+        lesson.mkdir()
+        source = lesson / "演示字幕.srt"
         source.write_text(DEMO, encoding="utf-8", newline="")
         raw = source.read_bytes()
-        for i, mode in ((0, "raw"), (0, "text"), (0, "clean"), (1, "range")):
-            page = window.pages[i]
-            window.navigation.setCurrentRow(i)
-            if mode != "range":
-                page.mode_choice.setCurrentIndex(page.mode_choice.findData(mode))
-            page.add_files([source])
-            page.output.setText(str(root))
-            if page.mode == "range":
-                page.rebase.setChecked(True)
-            page.prepare()
-            wait_task(app, window)
-            assert len(page.results) == 1 and isinstance(page.results[0], Prepared), page.results
-            expected = page.results[0].data
-            suffix = page.results[0].suffix
-            page.export()
-            wait_task(app, window)
-            assert (root / (source.stem + suffix)).read_bytes() == expected
-            assert source.read_bytes() == raw
-        assert (root / "演示字幕_original.txt").read_bytes() == raw
-        cleaned = (root / "演示字幕_text.txt").read_text(encoding="utf-8")
-        assert "-->" not in cleaned and "Keep the moments" in cleaned
-        cropped = (root / "演示字幕_range.srt").read_text(encoding="utf-8")
-        assert "00:00:00,000 --> 00:00:02,000" in cropped
-        assert "范围之外" not in cropped
-        # Exercise previously-converted TXT in the shared conversion workbench.
+        output = root / "output"
+        output.mkdir()
         page = window.pages[0]
-        page.clear_files()
-        page.add_files([root / "演示字幕_original.txt"])
+        page.output.setText(str(output))
+        page.add_files([inputs])
+        wait_task(app, window)
+        assert page.paths == [source]
+        for toggle in page.tasks.values():
+            toggle.setChecked(True)
         page.prepare()
         wait_task(app, window)
-        assert "-->" not in page.results[0].preview
-        # Range TXT uses the same selected cues and exposes cleanup controls.
-        page = window.pages[1]
-        page.output_format.setCurrentIndex(1)
-        page.strip_tags.setChecked(True)
-        page.prepare()
-        wait_task(app, window)
-        assert "<i>" not in page.results[0].preview and "范围之外" not in page.results[0].preview
+        assert len(page.results) == 4 and all(isinstance(item.result, Prepared) for item in page.results)
+        assert list(output.iterdir()) == []  # Preview is read-only.
         page.export()
         wait_task(app, window)
-        assert (root / "演示字幕_range.txt").exists()
+        exports = output / "课程一"
+        assert (exports / "Text/SRT/演示字幕.srt").read_bytes() == raw
+        assert (exports / "Original/演示字幕.txt").read_bytes() == raw
+        for folder in ("Text", "Clean"):
+            text = (exports / folder / "演示字幕.txt").read_text(encoding="utf-8")
+            assert "-->" not in text and "Keep the moments" in text
+        assert source.read_bytes() == raw
+
+        # The reference script's archive-only path is SRT/, not Text/SRT/.
+        for task, toggle in page.tasks.items():
+            toggle.setChecked(task == "archive")
+        page.prepare()
+        wait_task(app, window)
+        page.export()
+        wait_task(app, window)
+        assert (exports / "SRT/演示字幕.srt").read_bytes() == raw
+
+        page.clear_files()
+        page.add_files([exports / "Original/演示字幕.txt"])
+        for task, toggle in page.tasks.items():
+            toggle.setChecked(task == "clean")
+        page.prepare()
+        wait_task(app, window)
+        assert "-->" not in page.results[0].result.preview
+        page.export()
+        wait_task(app, window)
+        assert (output / "Clean/演示字幕.txt").exists()
+
+        # Independent time-range workspace still supports both output formats.
+        page = window.pages[1]
+        window.navigation.setCurrentRow(1)
+        page.add_files([source])
+        page.output.setText(str(output))
+        page.rebase.setChecked(True)
+        for fmt in (0, 1):
+            page.output_format.setCurrentIndex(fmt)
+            page.strip_tags.setChecked(True)
+            page.prepare()
+            wait_task(app, window)
+            assert len(page.results) == 1 and isinstance(page.results[0], Prepared)
+            assert "范围之外" not in page.results[0].preview
+            if fmt == 0:
+                assert "00:00:00,000 --> 00:00:02,000" in page.results[0].preview
+            else:
+                assert "<i>" not in page.results[0].preview
+            page.export()
+            wait_task(app, window)
+        assert (output / "演示字幕_range.srt").exists() and (output / "演示字幕_range.txt").exists()
+        assert source.read_bytes() == raw
 
         for width, height in ((980, 620), (1180, 900), (1600, 1000)):
             window.resize(width, height)
-            for i, mode in ((0, "raw"), (0, "text"), (0, "clean"), (1, "range")):
+            for i, page in enumerate(window.pages):
                 window.navigation.setCurrentRow(i)
-                if mode != "range":
-                    window.pages[i].mode_choice.setCurrentIndex(window.pages[i].mode_choice.findData(mode))
-                app.processEvents()
-                scroll = window.stack.widget(i)
-                assert scroll.horizontalScrollBar().maximum() == 0, (width, height, i)
-                assert window.pages[i].table.horizontalScrollBar().maximum() == 0
-                # Hosted Windows desktops can clamp a requested 900px window
-                # to the available screen. Judge scrolling by the actual size.
-                if window.height() >= 900:
-                    assert scroll.verticalScrollBar().maximum() == 0, (
-                        mode, (width, height), (window.width(), window.height()),
-                        scroll.verticalScrollBar().maximum(),
-                    )
-                scroll.ensureWidgetVisible(window.pages[i].export_button)
-                app.processEvents()
-                button = window.pages[i].export_button
-                assert scroll.viewport().rect().contains(button.mapTo(scroll.viewport(), button.rect().center()))
-                assert window.grab().save(str(screenshot.with_name(f"page-{mode}-{width}.png")))
+                for expanded in (False, True) if i == 0 else (False,):
+                    if i == 0:
+                        page.settings_button.setChecked(expanded)
+                    app.processEvents()
+                    app.processEvents()
+                    scroll = window.stack.widget(i)
+                    assert scroll.horizontalScrollBar().maximum() == 0, (width, height, i, expanded)
+                    if window.height() >= 900 and not expanded:
+                        assert scroll.verticalScrollBar().maximum() == 0, (width, height, i, window.size(), scroll.verticalScrollBar().maximum())
+                    assert page.table.horizontalScrollBar().maximum() == 0
+                    scroll.ensureWidgetVisible(page.export_button)
+                    app.processEvents()
+                    assert scroll.viewport().rect().contains(page.export_button.mapTo(scroll.viewport(), page.export_button.rect().center()))
+                    assert window.grab().save(str(screenshot.with_name(f"page-{i}-{width}-{'open' if expanded else 'closed'}.png")))
         window.showMaximized()
         app.processEvents()
         for i in range(len(window.pages)):
@@ -101,14 +124,25 @@ def run_smoke(app, window, screenshot: Path):
         window.navigation.setCurrentRow(0)
         page = window.pages[0]
         page.clear_files()
-        page.add_files([source])
-        page.mode_choice.setCurrentIndex(1)
+        page.add_files([inputs])
+        wait_task(app, window)
+        for task, toggle in page.tasks.items():
+            toggle.setChecked(task in {"text", "archive"})
+        page.settings_button.setChecked(False)
         page.strip_tags.setChecked(True)
         page.prepare()
         wait_task(app, window)
-        # Remove temporary private paths from documentation captures.
-        page.output.setText("导出文件夹（点击「输出位置…」选择）")
+        # Sanitize display-only fields after validation; no private paths in docs.
+        page.output.blockSignals(True)
+        page.output.setText("演示输出")
+        page.output.blockSignals(False)
+        for row, item in enumerate(page.results):
+            relative = item.target.relative_to(output)
+            page.table.item(row, 1).setText("演示输出/" + relative.as_posix())
+        page.table.clearSelection()
+        page.preview.setPlainText("提取正文 → 演示输出/课程一/Text/演示字幕.txt\n\n" + page.results[0].result.preview)
         window.logs.clear()
-        window.log("预览完成：1 个有效文件，已提取 4 条字幕正文。")
+        window.log("任务计划：提取正文 + 归档 SRT，共 2 项就绪；来源文件保留。")
+        window.stack.widget(0).verticalScrollBar().setValue(0)
         app.processEvents()
         assert window.grab().save(str(screenshot))
