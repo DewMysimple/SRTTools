@@ -2,10 +2,10 @@
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QStandardPaths
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
-    QHBoxLayout, QHeaderView, QLabel, QPushButton,
+    QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QGridLayout, QFrame,
+    QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton,
     QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -21,6 +21,10 @@ def choice(items):
     return widget
 
 
+def default_output_directory():
+    return Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)) / "Test"
+
+
 class SrtWorkbench(QWidget):
     def __init__(self, window):
         super().__init__()
@@ -29,16 +33,18 @@ class SrtWorkbench(QWidget):
         self.relatives = {}
         self.results = []
         self.scan_issues = []
-        self.output_directory = None
         self.saved_paths = {}
         self.live = LivePreview(self)
         self.setAcceptDrops(True)
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(26, 24, 26, 18)
-        outer.setSpacing(12)
+        outer.setContentsMargins(18, 16, 18, 8)
+        outer.setSpacing(10)
+        heading = QHBoxLayout()
         title = QLabel("字幕整理")
         title.setObjectName("pageTitle")
-        outer.addWidget(title)
+        heading.addWidget(title)
+        heading.addStretch()
+        outer.addLayout(heading)
 
         self.controls = QWidget()
         controls = QVBoxLayout(self.controls)
@@ -52,35 +58,57 @@ class SrtWorkbench(QWidget):
         self.recursive = QCheckBox("包含子文件夹")
         self.recursive.setChecked(True)
         self.recursive.setToolTip("添加文件夹时生效；不跟随链接，跳过本次已选保存目录")
-        self.settings_button = QPushButton("格式设置")
-        self.settings_button.setCheckable(True)
         for widget in (self.add_button, self.folder_button, self.recursive):
             toolbar.addWidget(widget)
         toolbar.addStretch()
         controls.addLayout(toolbar)
+        heading.addWidget(self.controls)
 
         self.settings = QFrame()
         self.settings.setObjectName("settingsPanel")
-        form = QFormLayout(self.settings)
+        form = QGridLayout(self.settings)
+        form.setContentsMargins(12, 10, 12, 10)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(6)
+        settings_title = QLabel("02  导出设置")
+        settings_title.setObjectName("sectionTitle")
         self.encoding = choice([("自动 · UTF-8 / BOM", "auto"), ("UTF-8", "utf-8-sig"),
                                 ("UTF-16（含 BOM）", "utf-16"), ("简体中文 GB18030", "gb18030"),
                                 ("繁体中文 Big5", "big5"), ("西欧 Windows-1252", "cp1252")])
         self.output_encoding = choice([("UTF-8", "utf-8"), ("UTF-8（含 BOM）", "utf-8-sig"), ("UTF-16", "utf-16")])
         self.layout_choice = choice([("保留分行与段落", "keep"), ("每条字幕一行", "lines"), ("合并为一段", "paragraph")])
-        self.strip_tags = QCheckBox("去除字幕样式标签")
+        self.strip_tags = QCheckBox("清除格式标记")
+        self.strip_tags.setToolTip("例如 <i>文字</i> → 文字；清除常见 HTML 样式标签并还原 &amp; 等转义字符。\n没有这些标记时，勾选与否不会改变文字；不会删除时间戳。")
         self.reset_button = QPushButton("恢复默认")
         self.reset_button.clicked.connect(self.reset_options)
-        form.addRow("正文排版", self.layout_choice)
-        form.addRow("保存编码", self.output_encoding)
-        form.addRow("读取编码", self.encoding)
-        row = QHBoxLayout()
-        row.addWidget(self.strip_tags)
-        row.addStretch()
-        row.addWidget(self.reset_button)
-        form.addRow(row)
-        self.settings.hide()
-        self.settings_button.toggled.connect(self.settings.setVisible)
-        outer.addWidget(self.controls)
+        form.addWidget(settings_title, 0, 0, 1, 2)
+        form.addWidget(self.reset_button, 0, 3, alignment=Qt.AlignmentFlag.AlignRight)
+        self.format_controls = QWidget()
+        format_row = QHBoxLayout(self.format_controls)
+        format_row.setContentsMargins(0, 0, 0, 0)
+        self.output_format = choice([("TXT", "txt"), ("SRT", "srt")])
+        format_row.addWidget(self.output_format)
+        self.timestamps = QCheckBox("保留时间戳")
+        format_row.addWidget(self.timestamps)
+        format_row.addStretch()
+        form.addWidget(QLabel("文件格式"), 1, 0)
+        form.addWidget(self.format_controls, 1, 1, 1, 3)
+        form.addWidget(QLabel("正文排版"), 2, 0)
+        form.addWidget(self.layout_choice, 2, 1)
+        form.addWidget(QLabel("保存编码"), 2, 2)
+        form.addWidget(self.output_encoding, 2, 3)
+        form.addWidget(QLabel("读取编码"), 3, 0)
+        form.addWidget(self.encoding, 3, 1)
+        form.addWidget(self.strip_tags, 3, 2, 1, 2)
+        for widget in (self.layout_choice, self.encoding, self.output_encoding):
+            widget.setMinimumWidth(0)
+            widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        form.setColumnStretch(1, 1)
+        form.setColumnStretch(3, 1)
+        self.format_info = QLabel()
+        self.format_info.setObjectName("hint")
+        self.format_info.setWordWrap(True)
+        form.addWidget(self.format_info, 4, 0, 1, 4)
 
         self.scan_status = QLabel()
         self.scan_status.setWordWrap(True)
@@ -90,13 +118,13 @@ class SrtWorkbench(QWidget):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.splitter.setMinimumHeight(230)
+        self.splitter.setMinimumHeight(355)
         library = QFrame()
         library.setObjectName("libraryPanel")
-        library.setMinimumWidth(215)
+        library.setMinimumWidth(195)
         left = QVBoxLayout(library)
         left.setContentsMargins(10, 14, 10, 10)
-        self.source_summary = QLabel("文件  ·  0")
+        self.source_summary = QLabel("01  来源文件 · 0")
         self.source_summary.setObjectName("sectionTitle")
         left.addWidget(self.source_summary)
         self.table = QTableWidget(0, 2)
@@ -122,83 +150,111 @@ class SrtWorkbench(QWidget):
         row.addStretch()
         left.addWidget(self.list_controls)
 
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
+        content_layout.addWidget(self.settings)
         reader = QFrame()
         reader.setObjectName("readerPanel")
-        reader.setMinimumWidth(250)
+        reader.setMinimumWidth(300)
+        reader.setMinimumHeight(130)
         right = QVBoxLayout(reader)
-        right.setContentsMargins(18, 16, 18, 16)
-        self.format_controls = QWidget()
-        format_row = QHBoxLayout(self.format_controls)
-        format_row.setContentsMargins(0, 0, 0, 0)
-        format_row.addWidget(QLabel("导出为"))
-        self.output_format = choice([("纯文本 · .txt", "text"),
-                                     ("原字幕副本 · .srt", "copy"),
-                                     ("带时间轴文本 · .txt", "raw")])
-        self.output_format.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        format_row.addWidget(self.output_format, 1)
-        format_row.addWidget(self.settings_button)
-        right.addWidget(self.format_controls)
-        right.addWidget(self.settings)
-        self.format_info = QLabel()
-        self.format_info.setObjectName("hint")
-        self.format_info.setWordWrap(True)
-        right.addWidget(self.format_info)
+        right.setContentsMargins(12, 10, 12, 10)
+        preview_title = QLabel("03  内容预览")
+        preview_title.setObjectName("sectionTitle")
+        right.addWidget(preview_title)
         self.document_title = QLabel("导出预览")
-        self.document_title.setObjectName("sectionTitle")
-        self.document_title.setWordWrap(True)
+        self.document_title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.document_title.setTextFormat(Qt.TextFormat.PlainText)
         right.addWidget(self.document_title)
         self.document_info = QLabel("添加文件后，自动显示最终文件内容")
         self.document_info.setObjectName("hint")
         self.document_info.setWordWrap(True)
         right.addWidget(self.document_info)
+        self.style_info = QLabel("格式标记示例：<i>文字</i> → 文字；无标记时勾选前后相同")
+        self.style_info.setTextFormat(Qt.TextFormat.PlainText)
+        self.style_info.setObjectName("hint")
+        self.style_info.setWordWrap(True)
+        right.addWidget(self.style_info)
         self.preview = TextPreview()
         self.preview.setMinimumWidth(0)
         self.preview.setPlaceholderText("添加 SRT 或 TXT 文件\n\n选好格式，预览会自动更新。\n导出保存的就是这里的内容。")
         right.addWidget(self.preview, 1)
+        content_layout.addWidget(reader, 1)
         self.splitter.addWidget(library)
-        self.splitter.addWidget(reader)
+        self.splitter.addWidget(content)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes([240, 620])
+        self.splitter.setSizes([210, 650])
         outer.addWidget(self.splitter, 1)
 
-        self.footer = QWidget()
-        footer = QHBoxLayout(self.footer)
-        footer.setContentsMargins(0, 0, 0, 0)
+        self.footer = QFrame()
+        self.footer.setObjectName("outputPanel")
+        footer = QVBoxLayout(self.footer)
+        footer.setContentsMargins(18, 10, 18, 10)
+        folder = QHBoxLayout()
+        output_title = QLabel("04  输出位置")
+        output_title.setObjectName("sectionTitle")
+        folder.addWidget(output_title)
+        self.output = QLineEdit(str(default_output_directory()))
+        self.output.setMinimumWidth(0)
+        self.output.setToolTip(self.output.text())
+        self.output.textChanged.connect(self.destination_changed)
+        folder.addWidget(self.output, 1)
+        self.browse_button = QPushButton("浏览…")
+        self.browse_button.clicked.connect(self.choose_destination)
+        folder.addWidget(self.browse_button)
+        footer.addLayout(folder)
+        actions = QHBoxLayout()
         self.summary = QLabel("本地处理 · 原文件保留")
         self.summary.setObjectName("hint")
         self.summary.setWordWrap(True)
-        footer.addWidget(self.summary, 1)
+        actions.addWidget(self.summary, 1)
         self.preview_button = QPushButton("重新读取")
         self.preview_button.setToolTip("文件在外部改动或取消预览后，重新读取；设置变化会自动更新")
         self.preview_button.clicked.connect(self.prepare)
-        self.export_button = QPushButton("导出 TXT…")
+        self.export_button = QPushButton("导出全部文件")
+        self.export_button.setToolTip("保存列表中所有预览成功的文件，不只是当前查看的一行；失败项不会导出。")
         self.export_button.setObjectName("primary")
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self.export)
-        footer.addWidget(self.preview_button)
-        footer.addWidget(self.export_button)
-        outer.addWidget(self.footer)
+        actions.addWidget(self.preview_button)
+        actions.addWidget(self.export_button)
+        footer.addLayout(actions)
+        # MainWindow places this footer outside the scrollable content.
         for widget in (self.encoding, self.output_encoding, self.layout_choice, self.output_format):
             widget.currentIndexChanged.connect(self.invalidate)
         self.strip_tags.toggled.connect(self.invalidate)
+        self.timestamps.toggled.connect(self.invalidate)
         self.adjust_format()
 
     def adjust_format(self):
-        text = self.output_format.currentData() == "text"
-        for widget in (self.output_encoding, self.layout_choice, self.strip_tags):
-            widget.setEnabled(text)
-        self.format_info.setText(
-            f"去掉序号与时间轴 · {self.layout_choice.currentText()} · {self.output_encoding.currentText()}"
-            if text else "保留序号、时间轴、原编码与换行；只复制，不改写内容")
-        self.settings.setToolTip("原样保存不应用正文排版、去标签或保存编码设置" if not text else "修改后自动更新预览")
+        srt = self.output_format.currentData() == "srt"
+        if srt:
+            self.timestamps.blockSignals(True)
+            self.timestamps.setChecked(True)
+            self.timestamps.blockSignals(False)
+        self.timestamps.setEnabled(not srt)
+        timed = self.timestamps.isChecked()
+        self.layout_choice.model().item(2).setEnabled(not timed)
+        if timed and self.layout_choice.currentData() == "paragraph":
+            self.layout_choice.blockSignals(True)
+            self.layout_choice.setCurrentIndex(0)
+            self.layout_choice.blockSignals(False)
+        self.format_info.setText("SRT 必须包含时间戳；保留原时间，按当前设置生成字幕。" if srt else
+                                 "TXT · 包含字幕序号、时间戳与正文；不会生成新的时间。" if timed else
+                                 "TXT · 只导出正文，不含字幕序号和时间戳。")
+        self.timestamps.setToolTip("SRT 格式必须包含时间戳；如需无时间戳请选择 TXT。" if srt else "勾选保留原字幕时间戳；取消只输出文字。")
+        self.layout_choice.setToolTip("保留时间戳时不能合并全部字幕为一段。" if timed else "调整正文的分行和段落")
 
     def extension(self):
-        return "SRT" if self.output_format.currentData() == "copy" else "TXT"
+        return self.output_format.currentData().upper()
 
     def options(self):
         return Options(encoding=self.encoding.currentData(), output_encoding=self.output_encoding.currentData(),
-                       layout=self.layout_choice.currentData(), strip_tags=self.strip_tags.isChecked())
+                       layout=self.layout_choice.currentData(), strip_tags=self.strip_tags.isChecked(),
+                       output_format=self.output_format.currentData(), include_timestamps=self.timestamps.isChecked())
 
     def reset_options(self):
         for widget in (self.encoding, self.output_encoding, self.layout_choice):
@@ -281,7 +337,7 @@ class SrtWorkbench(QWidget):
             self.table.setItem(row, 0, cell)
             self.table.setItem(row, 1, QTableWidgetItem("待预览"))
         self.table.blockSignals(False)
-        self.source_summary.setText(f"文件  ·  {len(self.paths)}")
+        self.source_summary.setText(f"01  来源文件 · {len(self.paths)}")
         if self.paths:
             self.table.selectRow(max(0, min(current, len(self.paths) - 1)))
 
@@ -314,8 +370,9 @@ class SrtWorkbench(QWidget):
         self.document_title.setText("导出预览")
         self.document_title.setToolTip("")
         self.document_info.setText("正在更新预览…" if self.paths else "添加文件后，自动显示最终文件内容")
+        self.style_info.setText("正在检查格式标记…" if self.paths else "格式标记示例：<i>文字</i> → 文字；无标记时勾选前后相同")
         self.export_button.setEnabled(False)
-        self.export_button.setText(f"导出 {self.extension()}…")
+        self.export_button.setText("导出全部文件")
         self.summary.setText("正在更新预览…" if self.paths else "本地处理 · 原文件保留")
         self.refresh_files()
 
@@ -324,11 +381,12 @@ class SrtWorkbench(QWidget):
         self.live.start()
 
     def preview_operation(self):
-        paths, options, kind = list(self.paths), self.options(), self.output_format.currentData()
-        return lambda cancel, progress: prepare_documents(paths, options, kind, cancel, progress)
+        paths, options = list(self.paths), self.options()
+        return lambda cancel, progress: prepare_documents(paths, options, "document", cancel, progress)
 
     def preview_failed(self, message):
         self.document_info.setText(message)
+        self.style_info.clear()
         self.summary.setText(message)
 
     def prepared(self, results):
@@ -343,8 +401,9 @@ class SrtWorkbench(QWidget):
             else:
                 for warning in result.warnings:
                     self.window.log(f"{result.source.name}：{warning}")
-        self.summary.setText(f"全部 {valid} 个有效文件 · " + (f"{len(results) - valid} 个失败，点选查看" if valid < len(results) else "同名自动编号"))
-        self.export_button.setText(f"导出 {self.extension()}（{valid}）…")
+        self.summary.setText(f"待导出：{valid} 个 {self.extension()} 文件 · " +
+                             (f"{len(results) - valid} 个失败项不导出，点选查看" if valid < len(results) else "同名自动编号"))
+        self.export_button.setText("导出全部文件")
         self.export_button.setEnabled(valid > 0)
         self.show_preview()
 
@@ -356,33 +415,44 @@ class SrtWorkbench(QWidget):
         saved = self.saved_paths.get(result.source)
         name = saved.name if saved else result.source.stem[:160] + result.suffix if isinstance(result, Prepared) else result.source.name
         self.document_title.setText(name)
-        self.document_title.setToolTip(str(saved) if saved else f"来源：{result.source}\n保存到所选目录；同名自动编号。")
+        destination = self.output_directory
+        planned = destination / self.relatives.get(result.source, Path()) / name if destination else "请填写绝对输出路径"
+        self.document_title.setToolTip(str(saved) if saved else f"来源：{result.source}\n输出：{planned}\n同名自动编号，不覆盖。")
         if isinstance(result, Prepared):
             detail = f"{result.cue_count} 条字幕 · " if result.cue_count is not None else ""
-            if self.output_format.currentData() == "text":
-                encoding = self.output_encoding.currentText()
-            else:
-                encoding = result.encoding.upper()
-                if result.encoding == "utf-8-sig":
-                    encoding = "UTF-8（含 BOM）" if result.data.startswith(b"\xef\xbb\xbf") else "UTF-8"
+            encoding = self.output_encoding.currentText()
             self.document_info.setText(f"{self.extension()} · {encoding} · " + detail + f"{len(result.preview):,} 字符 · 最终文件内容")
             self.preview.setPlainText(result.preview)
+            self.style_info.setText(("已清除格式标记，如 <i>、<b>；文字保留" if self.strip_tags.isChecked() else
+                                     "检测到格式标记，如 <i>、<b>；当前保留，可勾选清除") if result.has_style_markup else
+                                    "未发现可清除的格式标记；勾选与否，文字相同")
         else:
             self.document_info.setText("无法生成预览，请检查文件或读取编码；此项不会导出")
+            self.style_info.clear()
             self.preview.setPlainText(result.message)
 
-    def choose_destination(self, title):
-        directory = QFileDialog.getExistingDirectory(self, title, str(self.output_directory or ""))
-        if not directory:
-            return None
-        self.output_directory = Path(directory).absolute()
-        return self.output_directory
+    @property
+    def output_directory(self):
+        value = self.output.text().strip()
+        path = Path(value)
+        return path if value and path.is_absolute() else None
+
+    def destination_changed(self):
+        self.output.setToolTip(self.output.text())
+        self.saved_paths.clear()
+        self.show_preview()
+
+    def choose_destination(self):
+        directory = QFileDialog.getExistingDirectory(self, "选择输出文件夹", self.output.text())
+        if directory:
+            self.output.setText(directory)
 
     def export(self):
         if self.window.worker or not any(isinstance(item, Prepared) for item in self.results):
             return
-        output = self.choose_destination(f"保存预览中的 {self.extension()} 文件到（同名自动编号）")
+        output = self.output_directory
         if output is None:
+            self.summary.setText("请填写完整的绝对输出路径，或点击“浏览…”选择文件夹。")
             return
         items, relatives = list(self.results), dict(self.relatives)
         self.export_button.setEnabled(False)
@@ -401,7 +471,7 @@ class SrtWorkbench(QWidget):
         self.summary.setText(f"{action}：已保存 {success} 个文件 · 未保存 {len(results) - success} 个 · 原文件保留")
         self.summary.setToolTip(str(self.output_directory))
         self.export_button.setEnabled(any(isinstance(item, Prepared) for item in self.results))
-        self.export_button.setText(f"再次导出 {self.extension()}…")
+        self.export_button.setText("再次导出全部文件")
         self.show_preview()
 
     def dragEnterEvent(self, event):

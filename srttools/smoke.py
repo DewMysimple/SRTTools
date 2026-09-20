@@ -27,27 +27,29 @@ def check_layout(app, window, screenshot=None):
         window.resize(width, height)
         for i, page in enumerate(window.pages):
             window.navigation.setCurrentRow(i)
-            for expanded in (False, True) if i == 0 else (False,):
-                if i == 0:
-                    page.settings_button.setChecked(expanded)
-                app.processEvents()
-                app.processEvents()
-                scroll = window.stack.widget(i)
-                assert scroll.horizontalScrollBar().maximum() == 0, (width, height, i, expanded)
-                if window.height() >= 900 and not expanded:
-                    assert scroll.verticalScrollBar().maximum() == 0, (width, height, i)
-                assert page.table.horizontalScrollBar().maximum() == 0
+            app.processEvents()
+            app.processEvents()
+            scroll = page.scroll
+            assert scroll.horizontalScrollBar().maximum() == 0, (width, height, i)
+            if window.height() >= 900:
+                assert scroll.verticalScrollBar().maximum() == 0, (width, height, i)
+            assert page.table.horizontalScrollBar().maximum() == 0
+            if i != 0:
+                assert page.preview.height() >= 80 and page.table.height() >= 80
                 scroll.ensureWidgetVisible(page.export_button)
-                app.processEvents()
-                assert scroll.viewport().rect().contains(page.export_button.mapTo(scroll.viewport(), page.export_button.rect().center()))
-                if screenshot:
-                    assert window.grab().save(str(screenshot.with_name(f"page-{i}-{width}-{'open' if expanded else 'closed'}.png")))
+            app.processEvents()
+            assert window.rect().contains(page.export_button.mapTo(window, page.export_button.rect().center()))
+            if i == 0:
+                assert page.settings.isVisible() and page.output.isVisible()
+                assert page.footer.geometry().height() < window.height() // 3
+            if screenshot:
+                assert window.grab().save(str(screenshot.with_name(f"page-{i}-{width}.png")))
     window.showMaximized()
     app.processEvents()
     for i in range(len(window.pages)):
         window.navigation.setCurrentRow(i)
         app.processEvents()
-        assert window.stack.widget(i).horizontalScrollBar().maximum() == 0
+        assert window.pages[i].scroll.horizontalScrollBar().maximum() == 0
     window.showNormal()
 
 
@@ -66,6 +68,7 @@ def run_smoke(app, window, screenshot: Path):
         output = root / "output"
         output.mkdir()
         page = window.pages[0]
+        page.output.setText(str(output))
         page.add_files([inputs])
         wait_task(app, window)
         assert len(page.results) == 3 and all(isinstance(item, Prepared) for item in page.results)
@@ -79,20 +82,22 @@ def run_smoke(app, window, screenshot: Path):
             assert not (output / "Text").exists()
             page.output_format.setCurrentIndex(1)
             wait_task(app, window)
-            assert page.preview.text == raw.decode("utf-8").replace("\r\n", "\n")
+            assert page.timestamps.isChecked() and not page.timestamps.isEnabled()
             page.export()
             wait_task(app, window)
-            assert (output / "课程一" / source.name).read_bytes() == raw
-            assert "未保存 1" in page.summary.text()  # TXT is not an SRT copy.
-            page.output_format.setCurrentIndex(2)
+            assert (output / "课程一" / source.name).read_bytes() == page.results[0].data
+            assert "未保存 1" in page.summary.text()  # Plain TXT cannot invent timestamps.
+            page.output_format.setCurrentIndex(0)
+            page.timestamps.setChecked(True)
             wait_task(app, window)
             page.export()
             wait_task(app, window)
-            assert (output / "课程一" / "01 开始阅读 (2).txt").read_bytes() == raw
+            assert (output / "课程一" / "01 开始阅读 (2).txt").read_bytes() == page.results[0].data
         assert source.read_bytes() == raw
 
         # Real live changes (no explicit refresh) and the entire >50k preview.
         page.output_format.setCurrentIndex(0)
+        page.timestamps.setChecked(False)
         page.layout_choice.setCurrentIndex(2)
         page.output_encoding.setCurrentIndex(2)
         page.strip_tags.setChecked(True)
@@ -151,14 +156,15 @@ def run_smoke(app, window, screenshot: Path):
         window.navigation.setCurrentRow(0)
         page = window.pages[0]
         page.output_format.setCurrentIndex(0)
-        page.settings_button.setChecked(False)
         page.strip_tags.setChecked(True)
         wait_task(app, window)
         page.table.selectRow(0)
         # All visible strings are public demo data, never private paths.
         window.logs.clear()
         window.log("已读取 3 个文件，正文预览就绪。原文件保持不变。")
-        window.stack.widget(0).verticalScrollBar().setValue(0)
+        page.scroll.verticalScrollBar().setValue(0)
+        # Public screenshot must not show a personal account or temporary path.
+        page.output.setText(r"D:\字幕输出")
         app.processEvents()
         app.processEvents()
         assert window.grab().save(str(screenshot))

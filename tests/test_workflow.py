@@ -164,3 +164,62 @@ def test_output_link_introduced_after_preview_is_rejected(source, tmp_path):
         pytest.skip("symlink creation unavailable")
     assert isinstance(export_documents(items, tmp_path, {source: Path("sub")})[0], Failure)
     assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize("fmt,timed", [("txt", False), ("txt", True), ("srt", True), ("srt", False)])
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16"])
+@pytest.mark.parametrize("strip", [False, True])
+def test_document_formats_timestamps_and_styling_are_independent(source, tmp_path, fmt, timed, encoding, strip):
+    from srttools.subtitles import parse_srt
+    raw = "1\n00:00:01,000 --> 00:00:03,000\n<i>Hello &amp; world</i>\n2026\n"
+    source.write_text(raw, encoding="utf-8", newline="")
+    item = prepare_documents([source], Options(output_format=fmt, include_timestamps=timed,
+                             output_encoding=encoding, strip_tags=strip), "document")[0]
+    assert isinstance(item, Prepared) and item.has_style_markup
+    assert ("-->" in item.preview) == (timed or fmt == "srt")
+    assert ("<i>" in item.preview) != strip and ("&amp;" in item.preview) != strip
+    assert item.preview.endswith("2026\n") and item.suffix == "." + fmt
+    if timed or fmt == "srt":
+        cues = parse_srt(item.preview)
+        assert len(cues) == 1 and (cues[0].start, cues[0].end) == (1000, 3000)
+    assert item.data == item.preview.encode(encoding)
+    output = tmp_path / "not-created-by-preview" / "nested"
+    assert not output.exists()
+    result = export_documents([item], output, {})[0]
+    assert result.read_bytes() == item.data
+    assert source.read_text(encoding="utf-8") == raw
+
+
+def test_timed_txt_requires_real_times_but_accepts_srt_structure_in_txt(source):
+    txt = source.with_suffix(".txt")
+    txt.write_text("正文 2026", encoding="utf-8")
+    opts = Options(output_format="txt", include_timestamps=True)
+    item = prepare_documents([txt], opts, "document")[0]
+    assert isinstance(item, Failure) and "不能为普通 TXT" in item.message
+    txt.write_bytes(source.read_bytes())
+    assert isinstance(prepare_documents([txt], opts, "document")[0], Prepared)
+    assert isinstance(prepare_documents([txt], Options(output_format="srt"), "document")[0], Prepared)
+
+
+def test_no_style_markers_unknown_tags_and_no_cue_loss(source):
+    source.write_text("1\n00:00:01,000 --> 00:00:03,000\n<unknown>2026</unknown>", encoding="utf-8")
+    item = prepare_documents([source], Options(output_format="txt", strip_tags=True), "document")[0]
+    assert not item.has_style_markup and item.preview == "<unknown>2026</unknown>\n"
+    source.write_text("1\n00:00:01,000 --> 00:00:03,000\n<i></i>", encoding="utf-8")
+    item = prepare_documents([source], Options(output_format="srt", strip_tags=True), "document")[0]
+    assert isinstance(item, Failure) and "正文为空" in item.message
+
+
+def test_new_output_root_not_created_for_stale_cancelled_or_invalid_mapping(source, tmp_path):
+    items = prepare_documents([source], Options(output_format="txt"), "document")
+    output = tmp_path / "new-root"
+    with pytest.raises(ValueError, match="相对目录"):
+        export_documents(items, output, {source: Path("../escape")})
+    assert not output.exists()
+    cancel = Event()
+    cancel.set()
+    assert isinstance(export_documents(items, output, {}, cancel)[0], Failure)
+    assert not output.exists()
+    source.write_text("changed", encoding="utf-8")
+    assert isinstance(export_documents(items, output, {})[0], Failure)
+    assert not output.exists()

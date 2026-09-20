@@ -7,7 +7,7 @@ from threading import Event
 
 from .service import (Cancelled, Failure, MAX_BATCH_BYTES, Options, Prepared,
                       check_cancel, decode, export_one, prepare, read_source)
-from .subtitles import SubtitleError
+from .subtitles import SubtitleError, clean_txt, parse_srt, plain_text, render_srt
 
 
 def linked(path: Path) -> bool:
@@ -60,10 +60,51 @@ def discover(root: Path, recursive: bool, cancel: Event | None = None,
     return Discovery(tuple(sorted(paths)), tuple(issues))
 
 
+def prepare_document(path: Path, options: Options) -> Prepared:
+    """GUI document: format and timestamps are independent of text formatting."""
+    if options.output_format not in {"txt", "srt"}:
+        raise SubtitleError("请选择 TXT 或 SRT 格式。")
+    if options.output_encoding not in {"utf-8", "utf-8-sig", "utf-16"}:
+        raise SubtitleError("不支持的输出编码。")
+    data = read_source(path)
+    text, encoding = decode(data, options.encoding)
+    timed = options.include_timestamps or options.output_format == "srt"
+    cues = None
+    warnings = []
+    if path.suffix.lower() == ".srt" or timed:
+        try:
+            cues = parse_srt(text)
+        except SubtitleError as exc:
+            if timed and path.suffix.lower() == ".txt":
+                raise SubtitleError(f"带时间戳导出需要有效字幕时间轴，不能为普通 TXT 自动生成时间。{exc}") from None
+            raise
+        if any(a.start > b.start for a, b in zip(cues, cues[1:])):
+            warnings.append("原字幕时间顺序不递增，已保留原文顺序。")
+        if any(a.end > b.start for a, b in zip(cues, cues[1:])):
+            warnings.append("原字幕存在时间重叠，未自动合并。")
+    body = "\n\n".join(cue.text for cue in cues) if cues is not None else clean_txt(text)
+    has_markup = plain_text(body, strip_tags=True) != plain_text(body)
+    if timed:
+        if options.layout == "paragraph":
+            raise SubtitleError("保留时间戳时不能合并所有字幕为一段；请选择保留分行或每条一行。")
+        formatted = [replace(cue, text=plain_text(cue.text, strip_tags=options.strip_tags,
+                                                layout=options.layout).rstrip("\n")) for cue in cues]
+        if any(not cue.text.strip() for cue in formatted):
+            raise SubtitleError("清除格式标记后有字幕正文为空；请取消清除或检查来源，未跳过字幕。")
+        result = render_srt(formatted)
+    else:
+        result = plain_text(body, strip_tags=options.strip_tags, layout=options.layout)
+    if not result.strip():
+        raise SubtitleError("处理后没有正文；未生成空文件。")
+    return Prepared(path, hashlib.sha256(data).hexdigest(), result.encode(options.output_encoding),
+                    result, encoding, len(cues) if cues is not None else None,
+                    "." + options.output_format, tuple(warnings), has_markup)
+
+
 def prepare_documents(paths: list[Path], options: Options, kind: str = "text",
                       cancel: Event | None = None, progress=lambda *_: None) -> list[Prepared | Failure]:
     """One result per input. TXT cleanup is automatic, not a separate user task."""
-    if kind not in {"text", "copy", "raw"}:
+    if kind not in {"text", "copy", "raw", "document"}:
         raise SubtitleError("未知导出操作。")
     results, seen = [], set()
     input_size = output_size = 0
@@ -76,13 +117,15 @@ def prepare_documents(paths: list[Path], options: Options, kind: str = "text",
         try:
             check_cancel(cancel)
             validate_directory(path.parent)
-            allowed = {".srt", ".txt"} if kind == "text" else {".srt"}
+            allowed = {".srt", ".txt"} if kind in {"text", "document"} else {".srt"}
             if path.suffix.lower() not in allowed:
-                raise SubtitleError("此操作只接受 SRT 字幕。" if kind != "text" else "请选择 SRT 或 TXT 文件。")
+                raise SubtitleError("请选择 SRT 或 TXT 文件。" if kind in {"text", "document"} else "此操作只接受 SRT 字幕。")
             input_size += path.stat().st_size
             if input_size > MAX_BATCH_BYTES:
                 raise SubtitleError("批次输入上限为 256 MiB，请分批处理。")
-            if kind in {"copy", "raw"}:
+            if kind == "document":
+                result = prepare_document(path, options)
+            elif kind in {"copy", "raw"}:
                 data = read_source(path)
                 text, encoding = decode(data, options.encoding)
                 result = Prepared(path, hashlib.sha256(data).hexdigest(), data,
@@ -105,8 +148,6 @@ def export_documents(items: list[Prepared | Failure], output: Path, relatives: d
     """Save directly in the chosen folder, retaining only scanned relative paths."""
     output = output.absolute()
     validate_directory(output)
-    if not output.is_dir():
-        raise SubtitleError("请选择已存在的保存位置。")
     # Validate every relative mapping before any writes, even for later rows.
     for item in items:
         relative = relatives.get(item.source, Path())

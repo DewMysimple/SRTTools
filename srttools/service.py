@@ -31,6 +31,7 @@ class Options:
     clip: bool = True
     rebase: bool = False
     offset: int = 0
+    include_timestamps: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class Prepared:
     cue_count: int | None
     suffix: str
     warnings: tuple[str, ...] = ()
+    has_style_markup: bool = False
 
 
 @dataclass(frozen=True)

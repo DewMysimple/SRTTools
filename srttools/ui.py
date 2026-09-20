@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMainWindow,
     QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea,
-    QSpinBox, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem,
+    QSizePolicy, QSpinBox, QSplitter, QStackedWidget, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -37,7 +37,9 @@ QListWidget#navigation::item { padding: 14px 10px; margin: 3px 0; border-radius:
 QListWidget#navigation::item:selected { background: #28506a; color: white; }
 QLabel#pageTitle { font-size: 21pt; font-weight: 700; color: #142e40; }
 QLabel#hint { color: #52697d; }
-QFrame#readerPanel, QFrame#libraryPanel, QFrame#settingsPanel { background: #ffffff; border: 1px solid #d5dee7; border-radius: 9px; }
+QFrame#readerPanel, QFrame#libraryPanel { background: #ffffff; border: 1px solid #aebfce; border-radius: 8px; }
+QFrame#settingsPanel { background: #edf4f8; border: 1px solid #9eb8c9; border-radius: 8px; }
+QFrame#outputPanel { background: #e6f0f2; border-top: 2px solid #85aeb6; }
 QLabel#sectionTitle { font-size: 12pt; font-weight: 600; color: #192f40; }
 QPlainTextEdit#documentReader { border: none; font-size: 12pt; padding: 8px 0; }
 QPushButton { padding: 7px 14px; background: white; border: 1px solid #cad5df; border-radius: 6px; }
@@ -180,6 +182,9 @@ class FeaturePage(QWidget):
         self.preview.setPlaceholderText("添加文件、调整设置后自动预览。导出保存预览内容，来源始终保留。")
         self.preview.setMinimumHeight(80)
         splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        splitter.setChildrenCollapsible(False)
+        splitter.setMinimumHeight(180)
         splitter.addWidget(self.table)
         splitter.addWidget(self.preview)
         splitter.setSizes([180, 240])
@@ -198,10 +203,12 @@ class FeaturePage(QWidget):
         footer.addLayout(folder)
         actions = QHBoxLayout()
         self.summary = QLabel("尚未添加文件")
+        self.summary.setWordWrap(True)
         actions.addWidget(self.summary, 1)
         self.preview_button = QPushButton("重新读取")
         self.preview_button.clicked.connect(self.prepare)
-        self.export_button = QPushButton("导出全部有效项")
+        self.export_button = QPushButton("导出全部文件")
+        self.export_button.setToolTip("保存所有预览成功的文件；当前选中行只决定阅读内容。")
         self.export_button.setObjectName("primary")
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self.export)
@@ -341,8 +348,9 @@ class FeaturePage(QWidget):
         self.refresh_table()
         valid = sum(isinstance(r, Prepared) for r in results)
         fmt = self.output_format.currentData().upper()
-        self.summary.setText(f"{fmt} · {self.output_encoding.currentText()} · {valid} 个有效 · {len(results)-valid} 个失败")
-        self.export_button.setText(f"导出 {fmt}（{valid}）")
+        self.summary.setText(f"待导出：{valid} 个 {fmt} 文件 · {self.output_encoding.currentText()}" +
+                             (f" · {len(results)-valid} 个失败项不导出" if valid < len(results) else ""))
+        self.export_button.setText("导出全部文件")
         self.export_button.setEnabled(valid > 0)
         self.window.log(f"预览完成：{valid} 个有效，{len(results)-valid} 个失败。")
         for result in results:
@@ -430,7 +438,17 @@ class MainWindow(QMainWindow):
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setWidget(page)
-            self.stack.addWidget(scroll)
+            page.scroll = scroll
+            if isinstance(page, SrtWorkbench):
+                container = QWidget()
+                content = QVBoxLayout(container)
+                content.setContentsMargins(0, 0, 0, 0)
+                content.setSpacing(0)
+                content.addWidget(scroll, 1)
+                content.addWidget(page.footer)
+                self.stack.addWidget(container)
+            else:
+                self.stack.addWidget(scroll)
             self.pages.append(page)
         self.navigation.currentRowChanged.connect(self.stack.setCurrentIndex)
         self.navigation.setCurrentRow(0)

@@ -40,12 +40,13 @@ def test_document_first_ui_no_task_combinations_or_english_routes(app, window):
     page = window.pages[0]
     assert window.navigation.item(0).text() == "字幕整理"
     assert not hasattr(page, "tasks") and not hasattr(page, "mode_choice")
-    assert len(page.findChildren(QCheckBox)) == 2  # Recursion and formatting only.
+    assert len(page.findChildren(QCheckBox)) == 3  # Recursion, timestamps, style marks.
     assert page.table.columnCount() == 2
     assert page.splitter.orientation().name == "Horizontal"
     assert not page.export_button.isEnabled()
     assert not hasattr(page, "more_button")
-    assert page.output_format.currentText() == "纯文本 · .txt"
+    assert page.output_format.currentText() == "TXT" and page.output_format.count() == 2
+    assert page.settings.isVisible() and not hasattr(page, "settings_button")
     assert not window.logs.isVisible() and not window.task_status.isVisible()
     for label in page.findChildren(QLabel):
         assert not any(word in label.text() for word in ("Text/", "Original/", "Clean/", "任务", "组合"))
@@ -59,7 +60,7 @@ def test_auto_preview_then_direct_export(app, window, source, tmp_path, monkeypa
     assert len(page.results) == 1 and isinstance(page.results[0], Prepared)
     assert page.preview.toPlainText() == "<i>Hello</i>\n2026\n"
     assert page.export_button.isEnabled() and not (tmp_path / "example.txt").exists()
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
+    page.output.setText(str(tmp_path))
     page.export_button.click()
     wait_task(app, window)
     assert (tmp_path / "example.txt").read_text(encoding="utf-8") == page.preview.toPlainText()
@@ -74,7 +75,9 @@ def test_cancel_destination_is_zero_write_and_keeps_preview(app, window, source,
     page.add_files([source])
     wait_task(app, window)
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: "")
-    page.export()
+    before = page.output.text()
+    page.choose_destination()
+    assert page.output.text() == before
     assert window.worker is None and page.export_button.isEnabled()
     assert list(tmp_path.iterdir()) == [source]
 
@@ -102,7 +105,7 @@ def test_stale_source_rejected_after_preview(app, window, source, tmp_path, monk
     page.add_files([source])
     wait_task(app, window)
     source.write_text("changed", encoding="utf-8")
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
+    page.output.setText(str(tmp_path))
     page.export()
     wait_task(app, window)
     assert not (tmp_path / "example.txt").exists()
@@ -110,14 +113,15 @@ def test_stale_source_rejected_after_preview(app, window, source, tmp_path, monk
 
 
 def test_every_format_requires_real_preview_before_export(app, window, source, tmp_path, monkeypatch):
-    source.write_bytes(b"\xff\x80undecodable")
+    content = "1\n00:00:01,000 --> 00:00:02,000\nCafé"
+    source.write_bytes(content.encode("cp1252"))
     page = window.pages[0]
     page.add_files([source])
     wait_task(app, window)
     assert isinstance(page.results[0], Failure)
     page.output_encoding.setCurrentIndex(2)
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
-    for kind, name in ((1, "example (2).srt"), (2, "example.txt")):
+    page.output.setText(str(tmp_path))
+    for kind, name in ((1, "example (2).srt"), (0, "example.txt")):
         page.encoding.setCurrentIndex(0)
         page.output_format.setCurrentIndex(kind)
         wait_task(app, window)
@@ -126,11 +130,11 @@ def test_every_format_requires_real_preview_before_export(app, window, source, t
         assert not (tmp_path / name).exists()
         page.encoding.setCurrentIndex(5)  # Explicit cp1252 decoding makes the bytes readable.
         wait_task(app, window)
-        assert page.preview.toPlainText() == source.read_bytes().decode("cp1252")
-        assert not page.output_encoding.isEnabled() and not page.layout_choice.isEnabled()
+        assert page.preview.toPlainText() == content + "\n"
+        assert page.output_encoding.isEnabled() and page.layout_choice.isEnabled()
         page.export()
         wait_task(app, window)
-        assert (tmp_path / name).read_bytes() == source.read_bytes()
+        assert (tmp_path / name).read_bytes() == page.preview.toPlainText().encode("utf-16")
 
 
 def test_folder_scan_auto_preview_relative_output_and_nonrecursive(app, window, tmp_path, monkeypatch):
@@ -146,7 +150,7 @@ def test_folder_scan_auto_preview_relative_output_and_nonrecursive(app, window, 
     assert page.paths == [source] and page.relatives[source] == Path("课程")
     assert page.export_button.isEnabled()
     assert page.table.item(0, 0).toolTip() == str(source)
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(output))
+    page.output.setText(str(output))
     page.export()
     wait_task(app, window)
     assert (output / "课程" / "demo.txt").read_text() == "Hello\n"
@@ -166,14 +170,18 @@ def test_mixed_files_failure_visibility_selection_and_remove(app, window, source
     page.add_files([source, txt, bad])
     wait_task(app, window)
     assert len(page.results) == 3 and isinstance(page.results[2], Failure)
+    assert page.export_button.text() == "导出全部文件"
+    assert "待导出：2 个 TXT 文件" in page.summary.text()
+    assert "1 个失败项不导出" in page.summary.text()
     page.table.selectRow(1)
     assert page.preview.toPlainText() == "2026\nnotes\n"
     page.table.selectRow(2)
     assert "无法生成" in page.document_info.text()
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
+    page.output.setText(str(tmp_path))
     page.export()
     wait_task(app, window)
     assert "已保存 2" in page.summary.text() and "未保存 1" in page.summary.text()
+    assert page.export_button.text() == "再次导出全部文件"
     page.remove_files()
     wait_task(app, window)
     assert bad not in page.paths and bad.exists()
@@ -199,7 +207,8 @@ def test_task_lock_close_and_latest_logs(app, window):
     worker = window.worker
     page = window.pages[0]
     assert not page.add_button.isEnabled() and not page.remove_button.isEnabled()
-    assert not page.output_format.isEnabled() and not page.settings_button.isEnabled()
+    assert not page.output_format.isEnabled() and not page.settings.isEnabled()
+    assert not page.output.isEnabled()
     window.start_task(lambda *_: None, lambda _: None)
     assert window.worker is worker
     assert not window.close()
@@ -234,7 +243,6 @@ def test_live_settings_export_exact_preview_bytes(app, window, source, tmp_path,
     page = window.pages[0]
     page.add_files([source])
     wait_task(app, window)
-    page.settings_button.click()
     page.strip_tags.click()
     page.layout_choice.setCurrentIndex(layout)
     page.output_encoding.setCurrentIndex(encoding)
@@ -253,34 +261,39 @@ def test_live_settings_export_exact_preview_bytes(app, window, source, tmp_path,
     assert item.data == expected.encode(page.output_encoding.currentData())
     assert page.document_title.text() == "example.txt"
     assert page.output_encoding.currentText() in page.document_info.text()
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
+    page.output.setText(str(tmp_path))
     page.export_button.click()
     wait_task(app, window)
     assert (tmp_path / "example.txt").read_bytes() == item.data
 
 
-@pytest.mark.parametrize("fmt,suffix", [(1, ".srt"), (2, ".txt")])
+@pytest.mark.parametrize("fmt,suffix", [(1, ".srt"), (0, ".txt")])
 @pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16", "gb18030"])
-def test_raw_formats_preview_and_export_same_bom_crlf_bytes(app, window, source, tmp_path, monkeypatch, fmt, suffix, encoding):
+def test_timed_formats_preview_and_export_formatted_bytes(app, window, source, tmp_path, monkeypatch, fmt, suffix, encoding):
     content = "1\r\n00:00:01,000 --> 00:00:02,000\r\n<i>你好</i>\r\n2026\r\n"
     raw = content.encode(encoding)
     source.write_bytes(raw)
     page = window.pages[0]
     page.output_format.setCurrentIndex(fmt)
+    page.timestamps.setChecked(True)
+    page.strip_tags.setChecked(True)
+    page.output_encoding.setCurrentIndex(2)
     if encoding == "gb18030":
         page.encoding.setCurrentIndex(3)
     page.add_files([source])
     wait_task(app, window)
-    assert page.preview.toPlainText() == content.replace("\r\n", "\n")
-    assert page.results[0].data == raw
+    expected = content.replace("\r\n", "\n").replace("<i>", "").replace("</i>", "")
+    assert page.preview.toPlainText() == expected
+    assert page.results[0].data == expected.encode("utf-16")
     assert page.document_title.text().endswith(suffix)
-    assert not page.strip_tags.isEnabled() and not page.output_encoding.isEnabled()
+    assert page.strip_tags.isEnabled() and page.output_encoding.isEnabled()
     output = tmp_path / "out"
     output.mkdir()
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(output))
+    page.output.setText(str(output))
     page.export_button.click()
     wait_task(app, window)
-    assert (output / ("example" + suffix)).read_bytes() == raw == source.read_bytes()
+    assert (output / ("example" + suffix)).read_bytes() == expected.encode("utf-16")
+    assert source.read_bytes() == raw
 
 
 def test_full_long_text_is_accessible_and_no_pagination_labels_exported(app, window, tmp_path, monkeypatch):
@@ -298,7 +311,7 @@ def test_full_long_text_is_accessible_and_no_pagination_labels_exported(app, win
         pages.append(reader.toPlainText())
     expected = "".join(pages)
     assert expected == page.results[0].preview and expected.endswith("这是结尾\n")
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
+    page.output.setText(str(tmp_path))
     page.export_button.click()
     wait_task(app, window)
     assert (tmp_path / "long (2).txt").read_bytes() == expected.encode("utf-8")
@@ -328,12 +341,12 @@ def test_edits_during_preview_discard_old_completion_and_coalesce(app, window, s
     page.add_files([source])
     page.live.start()
     assert entered.wait(5)
-    assert page.output_format.isEnabled() and page.settings_button.isEnabled()
+    assert page.output_format.isEnabled() and page.settings.isEnabled()
     assert page.strip_tags.isEnabled() and not page.add_button.isEnabled()
     try:
         page.output_format.setCurrentIndex(1)
-        page.output_format.setCurrentIndex(2)
         page.output_format.setCurrentIndex(0)
+        page.timestamps.setChecked(False)
         page.strip_tags.setChecked(True)
         page.layout_choice.setCurrentIndex(2)
         assert window.worker.cancel.is_set()
@@ -386,7 +399,7 @@ def test_export_uses_prepared_snapshot_and_failure_stays_visible_with_logs_close
     page.add_files([source])
     wait_task(app, window)
     item = page.results[0]
-    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(tmp_path))
+    page.output.setText(str(tmp_path))
     monkeypatch.setattr(workbench, "prepare_documents", lambda *_: pytest.fail("Export must not regenerate content"))
     page.export_button.click()
     wait_task(app, window)
@@ -470,6 +483,8 @@ def test_range_live_update_invalid_input_recovery_and_export_parity(app, window,
         page.output_encoding.setCurrentIndex(2)
         wait_task(app, window)
         item = page.results[0]
+        assert page.export_button.text() == "导出全部文件"
+        assert f"待导出：1 个 {page.output_format.currentData().upper()} 文件" in page.summary.text()
         assert item.preview == page.preview.toPlainText()
         if fmt == 0:
             assert "00:00:00,000 --> 00:00:01,000" in item.preview
@@ -478,3 +493,142 @@ def test_range_live_update_invalid_input_recovery_and_export_parity(app, window,
         page.export_button.click()
         wait_task(app, window)
         assert (tmp_path / (source.stem + item.suffix)).read_bytes() == item.data == item.preview.encode("utf-16")
+
+
+def test_style_marks_explanation_and_no_marks_really_unchanged(app, window, source):
+    page = window.pages[0]
+    page.add_files([source])
+    wait_task(app, window)
+    assert "检测到格式标记" in page.style_info.text()
+    assert "<i>" in page.preview.toPlainText()
+    page.strip_tags.click()
+    wait_task(app, window)
+    assert "已清除格式标记" in page.style_info.text()
+    assert "<i>" not in page.preview.toPlainText()
+    source.write_text("1\n00:00:01,000 --> 00:00:02,000\n普通文字 2026", encoding="utf-8")
+    page.prepare()
+    wait_task(app, window)
+    original = page.results[0].data
+    assert "未发现" in page.style_info.text()
+    page.strip_tags.click()
+    wait_task(app, window)
+    assert page.results[0].data == original and "文字相同" in page.style_info.text()
+    assert page.style_info.textFormat().name == "PlainText"
+
+
+def test_format_and_timestamp_controls_live_and_srt_cannot_drop_timing(app, window, source):
+    page = window.pages[0]
+    page.add_files([source])
+    wait_task(app, window)
+    assert "-->" not in page.preview.text
+    page.layout_choice.setCurrentIndex(2)
+    page.timestamps.click()
+    wait_task(app, window)
+    assert "-->" in page.preview.text and page.extension() == "TXT"
+    assert page.options().layout == "keep"
+    assert not page.layout_choice.model().item(2).isEnabled()
+    page.output_format.setCurrentIndex(1)
+    wait_task(app, window)
+    assert page.timestamps.isChecked() and not page.timestamps.isEnabled()
+    assert "必须" in page.format_info.text() and page.document_title.text().endswith(".srt")
+    page.timestamps.setChecked(False)  # Even programmatic invalid combinations are normalized.
+    wait_task(app, window)
+    assert page.timestamps.isChecked() and "-->" in page.preview.text
+    page.output_format.setCurrentIndex(0)
+    page.timestamps.click()
+    wait_task(app, window)
+    assert page.timestamps.isEnabled() and "-->" not in page.preview.text
+    assert page.layout_choice.model().item(2).isEnabled()
+
+
+def test_default_desktop_output_custom_browse_and_creation_only_on_export(app, source, tmp_path, monkeypatch):
+    import srttools.workbench as workbench
+    desktop = tmp_path / "desktop"
+    monkeypatch.setattr(workbench.QStandardPaths, "writableLocation", lambda *_: str(desktop))
+    window = MainWindow()
+    try:
+        page = window.pages[0]
+        assert page.output_directory == desktop / "Test"
+        page.add_files([source])
+        wait_task(app, window)
+        assert not desktop.exists()
+        custom = tmp_path / "custom" / "output"
+        page.output.setText(str(custom))
+        assert not custom.exists() and str(custom) in page.document_title.toolTip()
+        page.reset_options()
+        wait_task(app, window)
+        assert page.output_directory == custom
+        page.output.setText(str(desktop / "Test"))
+        # Export must use the visible path, never open an extra folder dialog.
+        monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: pytest.fail("unexpected dialog"))
+        page.export_button.click()
+        wait_task(app, window)
+        assert (desktop / "Test" / "example.txt").read_bytes() == page.results[0].data
+        assert not custom.exists()
+        monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *_: str(custom))
+        page.browse_button.click()
+        assert page.output_directory == custom and not custom.exists()
+        page.export()
+        wait_task(app, window)
+        assert (custom / "example.txt").read_bytes() == page.results[0].data
+    finally:
+        if window.worker:
+            wait_task(app, window)
+        window.close()
+
+
+@pytest.mark.parametrize("value", ["", "relative-folder", "C:relative"])
+def test_bad_output_path_visible_without_writes(app, window, source, tmp_path, value):
+    page = window.pages[0]
+    page.add_files([source])
+    wait_task(app, window)
+    before = list(tmp_path.rglob("*"))
+    page.output.setText(value)
+    page.export()
+    assert window.worker is None
+    assert "绝对输出路径" in page.summary.text()
+    assert list(tmp_path.rglob("*")) == before
+
+
+def test_visible_output_directory_is_excluded_from_recursive_scan(app, window, tmp_path):
+    source = tmp_path / "input.txt"
+    source.write_text("原文", encoding="utf-8")
+    output = tmp_path / "out"
+    output.mkdir()
+    (output / "old.txt").write_text("已有导出", encoding="utf-8")
+    page = window.pages[0]
+    page.output.setText(str(output))
+    page.add_files([tmp_path])
+    wait_task(app, window)
+    assert page.paths == [source]
+
+
+def test_bottom_output_stays_visible_while_content_scrolls(app, window):
+    page = window.pages[0]
+    window.resize(850, 620)
+    window.logs_button.setChecked(True)
+    app.processEvents()
+    before = page.footer.mapTo(window, page.footer.rect().topLeft())
+    page.scroll.verticalScrollBar().setValue(page.scroll.verticalScrollBar().maximum())
+    app.processEvents()
+    assert page.footer.mapTo(window, page.footer.rect().topLeft()) == before
+    assert window.rect().contains(page.output.mapTo(window, page.output.rect().center()))
+    assert window.rect().contains(page.export_button.mapTo(window, page.export_button.rect().center()))
+    assert page.scroll.horizontalScrollBar().maximum() == 0
+
+
+def test_range_ready_summary_fits_small_window(app, window, source):
+    page = window.pages[1]
+    window.navigation.setCurrentRow(1)
+    window.resize(980, 620)
+    page.start.setText("1")
+    page.end.setText("2")
+    page.add_files([source])
+    wait_task(app, window)
+    page.scroll.ensureWidgetVisible(page.export_button)
+    app.processEvents()
+    assert page.export_button.text() == "导出全部文件"
+    assert "待导出：1 个 SRT 文件" in page.summary.text()
+    assert page.scroll.horizontalScrollBar().maximum() == 0
+    assert page.scroll.viewport().rect().contains(page.export_button.mapTo(page.scroll.viewport(), page.export_button.rect().center()))
+    assert page.preview.height() >= 80 and page.table.height() >= 80
