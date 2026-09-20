@@ -21,7 +21,7 @@ from .subtitles import parse_time
 from .workbench import SrtWorkbench
 
 FEATURES = (
-    ("workbench", "SRT 综合工作台", ""),
+    ("workbench", "字幕整理", ""),
     ("range", "时间范围导出", "截取指定时间段，导出新的 SRT 或纯文本。"),
 )
 
@@ -36,7 +36,9 @@ QListWidget#navigation::item { padding: 14px 10px; margin: 3px 0; border-radius:
 QListWidget#navigation::item:selected { background: #28506a; color: white; }
 QLabel#pageTitle { font-size: 21pt; font-weight: 700; color: #142e40; }
 QLabel#hint { color: #52697d; }
-QFrame#taskCard { background: #ffffff; border: 1px solid #d5dee7; border-radius: 7px; }
+QFrame#readerPanel, QFrame#libraryPanel, QFrame#settingsPanel { background: #ffffff; border: 1px solid #d5dee7; border-radius: 9px; }
+QLabel#sectionTitle { font-size: 12pt; font-weight: 600; color: #192f40; }
+QPlainTextEdit#documentReader { border: none; font-size: 12pt; padding: 8px 0; }
 QPushButton { padding: 7px 14px; background: white; border: 1px solid #cad5df; border-radius: 6px; }
 QPushButton:hover { background: #eaf3f7; border-color: #438395; }
 QPushButton#primary { background: #166b79; color: white; border: none; font-weight: 600; }
@@ -372,6 +374,8 @@ class FeaturePage(QWidget):
 
 
 class MainWindow(QMainWindow):
+    idle = Signal()
+
     def __init__(self):
         super().__init__()
         self.worker = None
@@ -450,6 +454,8 @@ class MainWindow(QMainWindow):
         for page in self.pages:
             page.controls.setEnabled(not busy)
             page.footer.setEnabled(not busy)
+            if isinstance(page, SrtWorkbench):
+                page.list_controls.setEnabled(not busy)
         self.cancel.setEnabled(busy)
 
     def start_task(self, operation, callback):
@@ -472,6 +478,7 @@ class MainWindow(QMainWindow):
         self.worker.deleteLater()
         self.worker = None
         self.set_busy(False)
+        self.idle.emit()
 
     def cancel_task(self):
         if self.worker:

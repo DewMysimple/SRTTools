@@ -4,7 +4,7 @@ from threading import Event
 import pytest
 
 from srttools.service import Failure, Options, Prepared
-from srttools.workflow import discover, execute, plan
+from srttools.workflow import discover, export_documents, prepare_documents
 
 
 @pytest.fixture
@@ -15,53 +15,48 @@ def source(tmp_path):
     return source
 
 
-@pytest.mark.parametrize("tasks,folders", [
-    (("text",), ("Text",)),
-    (("archive",), ("SRT",)),
-    (("raw",), ("Original",)),
-    (("clean",), ("Clean",)),
-    (("text", "archive"), ("Text", "Text/SRT")),
-    (("text", "archive", "raw", "clean"), ("Text", "Text/SRT", "Original", "Clean")),
-])
-def test_reference_workflows_zero_write_preview_and_copy_archive(source, tasks, folders):
+@pytest.mark.parametrize("kind,suffix", [("text", ".txt"), ("copy", ".srt"), ("raw", ".txt")])
+def test_direct_output_no_classification_folders_and_source_unchanged(source, tmp_path, kind, suffix):
     raw = source.read_bytes()
-    items = plan([source], tasks, Options(), None, {})
+    items = prepare_documents([source], Options(), kind)
     assert list(source.parent.iterdir()) == [source]
-    assert [item.target.parent.relative_to(source.parent).as_posix() for item in items] == list(folders)
-    results = execute(items)
-    assert len(results) == len(tasks) and all(isinstance(result, Path) for result in results)
-    for task, result in zip(tasks, results):
-        if task in {"archive", "raw"}:
-            assert result.read_bytes() == raw
-        else:
-            assert result.read_text(encoding="utf-8") == "Hello\n2026\n"
+    assert isinstance(items[0], Prepared)
+    result = export_documents(items, tmp_path, {})[0]
+    assert result == tmp_path / ("lesson" + suffix)
+    assert result.read_bytes() == (b"Hello\n2026\n" if kind == "text" else raw)
     assert source.read_bytes() == raw
+    assert not any((tmp_path / name).exists() for name in ("Text", "Original", "Clean", "SRT"))
 
 
-def test_conflicts_merge_without_overwrite_and_repeated_exports(source):
-    items = plan([source], ("text", "archive"), Options(), None, {})
-    for item in items:
-        item.target.parent.mkdir(parents=True, exist_ok=True)
-        item.target.write_bytes(b"precious")
-    results = execute(items)
-    assert all(isinstance(result, Path) and "(2)" in result.name for result in results)
-    assert all(item.target.read_bytes() == b"precious" for item in items)
-    again = execute(items)
-    assert all("(3)" in result.name for result in again)
+def test_conflicts_and_saving_into_input_folder_never_overwrite(source):
+    items = prepare_documents([source], Options(), "copy")
+    raw = source.read_bytes()
+    first = export_documents(items, source.parent, {})[0]
+    second = export_documents(items, source.parent, {})[0]
+    assert first.name == "lesson (2).srt" and second.name == "lesson (3).srt"
+    assert source.read_bytes() == first.read_bytes() == second.read_bytes() == raw
 
 
-def test_scan_scope_excludes_generated_folders_and_handles_cancel(source):
-    nested = source.parent / "nested"
-    nested.mkdir()
-    (nested / "more.srt").write_bytes(source.read_bytes())
-    (source.parent / "notes.txt").write_text("notes", encoding="utf-8")
-    for name in ("Text", "SRT", "Original", "Clean"):
+def test_relative_structure_and_same_name_collision(source, tmp_path):
+    other = source.parent / "other" / source.name
+    other.parent.mkdir()
+    other.write_bytes(source.read_bytes())
+    output = tmp_path / "out"
+    output.mkdir()
+    items = prepare_documents([source, other], Options())
+    paths = export_documents(items, output, {source: Path("课程"), other: Path("课程")})
+    assert [path.relative_to(output).as_posix() for path in paths] == ["课程/lesson.txt", "课程/lesson (2).txt"]
+
+
+def test_scan_all_named_directories_only_excludes_chosen_output(source):
+    for name in ("Text", "SRT", "Original", "Clean", "nested"):
         folder = source.parent / name
         folder.mkdir()
         (folder / "old.srt").write_bytes(source.read_bytes())
+    (source.parent / "notes.txt").write_text("notes", encoding="utf-8")
     assert len(discover(source.parent, False).paths) == 2
-    assert len(discover(source.parent, True).paths) == 3
-    assert len(discover(source.parent, True, excluded=nested).paths) == 2
+    assert len(discover(source.parent, True).paths) == 7
+    assert len(discover(source.parent, True, excluded=source.parent / "nested").paths) == 6
     cancel = Event()
     cancel.set()
     result = discover(source.parent, True, cancel)
@@ -75,51 +70,57 @@ def test_scan_reports_permission_errors(source, monkeypatch):
     assert not result.paths and "denied" in result.issues[0].message
 
 
-def test_stale_plan_makes_no_output_directory(source):
-    items = plan([source], ("text", "archive"), Options(), None, {})
+def test_stale_preview_makes_no_output_directory(source, tmp_path):
+    items = prepare_documents([source], Options())
     source.write_text("changed", encoding="utf-8")
-    assert all(isinstance(item, Failure) for item in execute(items))
-    assert list(source.parent.iterdir()) == [source]
+    assert isinstance(export_documents(items, tmp_path, {source: Path("new")})[0], Failure)
+    assert not (tmp_path / "new").exists()
 
 
-def test_mixed_inputs_and_failed_extraction_keep_independent_archive(source):
+def test_srt_and_txt_share_body_processing_but_bad_srt_is_not_silently_cleaned(source):
     invalid = source.parent / "bad.srt"
     invalid.write_bytes(b"not valid")
     txt = source.parent / "notes.txt"
-    txt.write_text("2026\nnotes", encoding="utf-8")
-    items = plan([invalid, txt], ("text", "archive", "clean"), Options(), None, {})
-    assert isinstance(items[0].result, Failure)
-    assert isinstance(items[1].result, Prepared)
-    assert items[3].result is None and items[4].result is None
-    assert items[5].result.preview == "2026\nnotes\n"
-    results = execute(items)
-    assert len(results) == 3 and all(isinstance(result, Path) for result in results)
+    txt.write_bytes(source.read_bytes())
+    items = prepare_documents([source, invalid, txt], Options())
+    assert isinstance(items[0], Prepared) and isinstance(items[1], Failure)
+    assert items[2].preview == items[0].preview == "Hello\n2026\n"
+    assert isinstance(prepare_documents([invalid], Options(), "copy")[0], Prepared)
+    assert isinstance(prepare_documents([txt], Options(), "copy")[0], Failure)
+    assert isinstance(prepare_documents([txt], Options(), "raw")[0], Failure)
 
 
-def test_partial_failure_and_cancel_preserve_success(source, monkeypatch):
+def test_partial_failure_and_cancel_preserve_success(source, tmp_path, monkeypatch):
     import srttools.workflow as workflow
-    items = plan([source], ("text", "archive", "raw"), Options(), None, {})
+    sources = [source]
+    for name in ("bad", "last"):
+        path = source.parent / (name + ".srt")
+        path.write_bytes(source.read_bytes())
+        sources.append(path)
+    items = prepare_documents(sources, Options())
     original = workflow.export_one
     def partial(item, directory, cancel):
-        if directory.name == "SRT":
+        if item.source.stem == "bad":
             raise PermissionError("denied")
         return original(item, directory, cancel)
     monkeypatch.setattr(workflow, "export_one", partial)
-    results = execute(items)
+    results = export_documents(items, tmp_path, {})
     assert isinstance(results[0], Path) and isinstance(results[1], Failure) and isinstance(results[2], Path)
     cancel = Event()
-    results = execute(items, cancel, lambda *_: cancel.set())
+    results = export_documents(items, tmp_path, {}, cancel, lambda *_: cancel.set())
     assert isinstance(results[0], Path) and all(isinstance(item, Failure) for item in results[1:])
-    assert source.exists()
+    assert all(path.exists() for path in sources)
 
 
-def test_output_obstacle_and_traversal_rejected(source, tmp_path):
-    (source.parent / "Text").write_text("keep", encoding="utf-8")
-    assert isinstance(plan([source], ("text",), Options(), None, {})[0].result, Failure)
-    with pytest.raises(ValueError, match="相对目录"):
-        plan([source], ("text",), Options(), tmp_path, {source: Path("../escape")})
-    with pytest.raises(ValueError, match="至少"):
-        plan([source], (), Options(), None, {})
+def test_output_obstacle_traversal_and_bad_operation_rejected(source, tmp_path):
+    items = prepare_documents([source], Options())
+    (tmp_path / "obstacle").write_text("keep", encoding="utf-8")
+    assert isinstance(export_documents(items, tmp_path, {source: Path("obstacle")})[0], Failure)
+    for relative in (Path("../escape"), Path("C:/escape"), Path("C:escape")):
+        with pytest.raises(ValueError, match="相对目录"):
+            export_documents(items, tmp_path, {source: relative})
+    with pytest.raises(ValueError, match="未知"):
+        prepare_documents([source], Options(), "invalid")
 
 
 def test_symlink_scan_and_output_blocked(source, tmp_path):
@@ -131,37 +132,35 @@ def test_symlink_scan_and_output_blocked(source, tmp_path):
     with pytest.raises(ValueError, match="链接"):
         discover(link, True)
     with pytest.raises(ValueError, match="链接"):
-        plan([source], ("text",), Options(), link, {})
+        export_documents(prepare_documents([source], Options()), link, {})
     assert any("链接" in issue.message for issue in discover(tmp_path, True).issues)
 
 
-def test_duplicate_paths_and_memory_limits(source, monkeypatch):
+def test_duplicate_paths_input_limit_and_cancelled_preview(source, monkeypatch):
     import srttools.workflow as workflow
-    assert len(plan([source, source], ("text",), Options(), None, {})) == 1
-    monkeypatch.setattr(workflow, "MAX_BATCH_BYTES", 1)
-    assert isinstance(plan([source], ("text",), Options(), None, {})[0].result, Failure)
-
-
-def test_cancelled_preview_and_output_budget(source, monkeypatch):
-    import srttools.workflow as workflow
+    assert len(prepare_documents([source, source], Options())) == 1
     cancel = Event()
     cancel.set()
-    items = plan([source], ("raw", "archive"), Options(), None, {}, cancel)
-    assert all(isinstance(item.result, Failure) for item in items)
-    assert list(source.parent.iterdir()) == [source]
-    monkeypatch.setattr(workflow, "MAX_BATCH_BYTES", len(source.read_bytes()) + 1)
-    items = plan([source], ("raw", "archive"), Options(), None, {})
-    assert isinstance(items[0].result, Prepared)
-    assert isinstance(items[1].result, Failure) and "输出预览" in items[1].result.message
+    assert isinstance(prepare_documents([source], Options(), cancel=cancel)[0], Failure)
+    monkeypatch.setattr(workflow, "MAX_BATCH_BYTES", 1)
+    assert isinstance(prepare_documents([source], Options())[0], Failure)
+
+
+def test_output_budget_counts_encoded_bytes(source, monkeypatch):
+    import srttools.workflow as workflow
+    source.write_text("1\n00:00:01,000 --> 00:00:03,000\n" + "a" * 100, encoding="utf-8")
+    monkeypatch.setattr(workflow, "MAX_BATCH_BYTES", source.stat().st_size)
+    item = prepare_documents([source], Options(output_encoding="utf-16"))[0]
+    assert isinstance(item, Failure) and "输出预览" in item.message
 
 
 def test_output_link_introduced_after_preview_is_rejected(source, tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
-    items = plan([source], ("text",), Options(), None, {})
+    items = prepare_documents([source], Options())
     try:
-        (source.parent / "Text").symlink_to(outside, target_is_directory=True)
+        (tmp_path / "sub").symlink_to(outside, target_is_directory=True)
     except OSError:
         pytest.skip("symlink creation unavailable")
-    assert isinstance(execute(items)[0], Failure)
+    assert isinstance(export_documents(items, tmp_path, {source: Path("sub")})[0], Failure)
     assert list(outside.iterdir()) == []

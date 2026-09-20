@@ -3,7 +3,7 @@ type: moc
 status: active
 kind: process
 importance: high
-updated: 2026-09-16
+updated: 2026-09-20
 topic: work-log-index
 source_logs: []
 supersedes: null
@@ -15,6 +15,7 @@ supersedes: null
 
 | 时间 | 类型 | 目标 | 状态 | 主题 | 日志 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-20 | ui | - | archived | document-workspace-redesign | [字幕整理文档式重构](./2026-09-20-字幕整理文档式重构.md) |
 | 2026-09-16 | ui | - | archived | srt-composable-workbench | [SRT 综合工作台重设计](./2026-09-16-SRT综合工作台重设计.md) |
 | 2026-09-15 | ui | - | archived | unified-text-workbench | [合并文本转换工作台](./2026-09-15-合并文本转换工作台.md) |
 | 2026-09-14 | feature | 实现用户四项字幕处理与实用补充能力，建立独立工程、工程记忆、文档和远程管理。 | archived | initial-release | [SRTTools 首版构建](./2026-09-14-SRTTools首版构建.md) |
