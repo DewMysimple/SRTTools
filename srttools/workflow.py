@@ -6,7 +6,7 @@ from pathlib import Path
 from threading import Event
 
 from .service import (Cancelled, Failure, MAX_BATCH_BYTES, Options, Prepared,
-                      check_cancel, export_one, prepare, read_source)
+                      check_cancel, decode, export_one, prepare, read_source)
 from .subtitles import SubtitleError
 
 
@@ -82,12 +82,13 @@ def prepare_documents(paths: list[Path], options: Options, kind: str = "text",
             input_size += path.stat().st_size
             if input_size > MAX_BATCH_BYTES:
                 raise SubtitleError("批次输入上限为 256 MiB，请分批处理。")
-            if kind == "copy":
+            if kind in {"copy", "raw"}:
                 data = read_source(path)
+                text, encoding = decode(data, options.encoding)
                 result = Prepared(path, hashlib.sha256(data).hexdigest(), data,
-                                  "复制原字幕，保留原文件。", "原始编码", None, ".srt")
+                                  text, encoding, None, ".srt" if kind == "copy" else ".txt")
             else:
-                mode = "raw" if kind == "raw" else "clean" if path.suffix.lower() == ".txt" else "text"
+                mode = "clean" if path.suffix.lower() == ".txt" else "text"
                 result = replace(prepare(path, replace(options, mode=mode)), suffix=".txt")
             output_size += len(result.data)
             if output_size > MAX_BATCH_BYTES:

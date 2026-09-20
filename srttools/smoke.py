@@ -13,7 +13,7 @@ DEMO = "1\n00:01:58,000 --> 00:02:02,000\n欢迎来到字幕工作台。\n\n2\n0
 
 def wait_task(app, window):
     deadline = time.monotonic() + 30
-    while window.worker is not None:
+    while window.worker is not None or any(page.live.pending or page.live.timer.isActive() for page in window.pages):
         app.processEvents()
         if time.monotonic() > deadline:
             window.cancel_task()
@@ -74,16 +74,36 @@ def run_smoke(app, window, screenshot: Path):
             page.export_button.click()
             wait_task(app, window)
             exported = output / "课程一" / "01 开始阅读.txt"
-            assert "-->" not in exported.read_text(encoding="utf-8")
+            assert exported.read_bytes() == page.results[0].data
+            assert exported.read_text(encoding="utf-8") == page.preview.toPlainText()
             assert not (output / "Text").exists()
-            page.save_other("copy")
+            page.output_format.setCurrentIndex(1)
+            wait_task(app, window)
+            assert page.preview.text == raw.decode("utf-8").replace("\r\n", "\n")
+            page.export()
             wait_task(app, window)
             assert (output / "课程一" / source.name).read_bytes() == raw
             assert "未保存 1" in page.summary.text()  # TXT is not an SRT copy.
-            page.save_other("raw")
+            page.output_format.setCurrentIndex(2)
+            wait_task(app, window)
+            page.export()
             wait_task(app, window)
             assert (output / "课程一" / "01 开始阅读 (2).txt").read_bytes() == raw
         assert source.read_bytes() == raw
+
+        # Real live changes (no explicit refresh) and the entire >50k preview.
+        page.output_format.setCurrentIndex(0)
+        page.layout_choice.setCurrentIndex(2)
+        page.output_encoding.setCurrentIndex(2)
+        page.strip_tags.setChecked(True)
+        wait_task(app, window)
+        assert page.results[0].data == page.preview.toPlainText().encode("utf-16")
+        with patch.object(QFileDialog, "getExistingDirectory", return_value=str(output)):
+            page.export_button.click()
+            wait_task(app, window)
+        assert (output / "课程一" / "01 开始阅读 (3).txt").read_bytes() == page.results[0].data
+        page.reset_options()
+        wait_task(app, window)
 
         page = window.pages[1]
         window.navigation.setCurrentRow(1)
@@ -107,12 +127,32 @@ def run_smoke(app, window, screenshot: Path):
         assert source.read_bytes() == raw
 
         check_layout(app, window, screenshot)
+        # Pagination and long filenames must not crowd the narrow layout.
+        page = window.pages[0]
+        long_source = lesson / ("字幕示例的长文件名" * 8 + ".txt")
+        long_source.write_text(("分页全文，结尾也能看到。\n" * 8000) + "全文结尾\n", encoding="utf-8")
+        window.navigation.setCurrentRow(0)
+        page.add_files([long_source])
+        wait_task(app, window)
+        page.table.selectRow(len(page.paths) - 1)
+        reader = page.preview
+        fragments = []
+        for number in range(1, reader.number.maximum() + 1):
+            reader.number.setValue(number)
+            fragments.append(reader.toPlainText())
+        assert "".join(fragments) == page.results[-1].preview
+        assert fragments[-1].endswith("全文结尾\n")
+        window.logs_button.setChecked(True)
+        check_layout(app, window)
+        window.logs_button.setChecked(False)
+        page.remove_files()
+        wait_task(app, window)
         window.resize(1180, 900)
         window.navigation.setCurrentRow(0)
         page = window.pages[0]
+        page.output_format.setCurrentIndex(0)
         page.settings_button.setChecked(False)
         page.strip_tags.setChecked(True)
-        page.prepare()
         wait_task(app, window)
         page.table.selectRow(0)
         # All visible strings are public demo data, never private paths.

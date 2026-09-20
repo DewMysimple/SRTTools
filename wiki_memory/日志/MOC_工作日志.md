@@ -15,6 +15,7 @@ supersedes: null
 
 | 时间 | 类型 | 目标 | 状态 | 主题 | 日志 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-20 | ui | 减少拥挤，明确文件形式与类型，设置实时预览且导出与预览一致。 | archived | live-preview-export-parity | [2026-09-20｜实时预览与导出一致性](./2026-09-20-实时预览与导出一致性.md) |
 | 2026-09-20 | ui | - | archived | document-workspace-redesign | [字幕整理文档式重构](./2026-09-20-字幕整理文档式重构.md) |
 | 2026-09-16 | ui | - | archived | srt-composable-workbench | [SRT 综合工作台重设计](./2026-09-16-SRT综合工作台重设计.md) |
 | 2026-09-15 | ui | - | archived | unified-text-workbench | [合并文本转换工作台](./2026-09-15-合并文本转换工作台.md) |

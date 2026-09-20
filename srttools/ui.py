@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import Qt, QThread, Signal, QUrl
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl
 from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFormLayout, QFrame,
@@ -19,6 +19,7 @@ from . import __version__
 from .service import Failure, Options, Prepared, export_batch, prepare_batch
 from .subtitles import parse_time
 from .workbench import SrtWorkbench
+from .preview import LivePreview, TextPreview
 
 FEATURES = (
     ("workbench", "字幕整理", ""),
@@ -84,6 +85,7 @@ class FeaturePage(QWidget):
         self.mode, self.window = mode, window
         self.paths: list[Path] = []
         self.results: list[Prepared | Failure] = []
+        self.live = LivePreview(self)
         self.setAcceptDrops(True)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(22, 18, 22, 12)
@@ -174,9 +176,8 @@ class FeaturePage(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setMinimumHeight(80)
         self.table.itemSelectionChanged.connect(self.show_preview)
-        self.preview = QPlainTextEdit()
-        self.preview.setReadOnly(True)
-        self.preview.setPlaceholderText("添加文件 → 生成预览 → 检查结果 → 导出。来源文件始终保留。")
+        self.preview = TextPreview()
+        self.preview.setPlaceholderText("添加文件、调整设置后自动预览。导出保存预览内容，来源始终保留。")
         self.preview.setMinimumHeight(80)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self.table)
@@ -198,7 +199,7 @@ class FeaturePage(QWidget):
         actions = QHBoxLayout()
         self.summary = QLabel("尚未添加文件")
         actions.addWidget(self.summary, 1)
-        self.preview_button = QPushButton("生成预览")
+        self.preview_button = QPushButton("重新读取")
         self.preview_button.clicked.connect(self.prepare)
         self.export_button = QPushButton("导出全部有效项")
         self.export_button.setObjectName("primary")
@@ -266,21 +267,28 @@ class FeaturePage(QWidget):
         self.refresh_table()
 
     def remove_files(self):
+        if self.window.worker:
+            return
         rows = {item.row() for item in self.table.selectedItems()}
         self.paths = [path for i, path in enumerate(self.paths) if i not in rows]
         self.invalidate()
         self.refresh_table()
 
     def clear_files(self):
+        if self.window.worker:
+            return
         self.paths.clear()
         self.invalidate()
         self.refresh_table()
 
     def invalidate(self, *_):
+        self.live.request()
+
+    def clear_preview(self):
         self.results = []
         self.export_button.setEnabled(False)
         self.preview.clear()
-        self.summary.setText(f"{len(self.paths)} 个文件 · 请生成预览")
+        self.summary.setText("正在更新预览…" if self.paths else "尚未添加文件")
         self.refresh_table()
 
     def refresh_table(self):
@@ -307,10 +315,7 @@ class FeaturePage(QWidget):
             return
         result = next((r for r in self.results if r.source == self.paths[row]), None)
         if isinstance(result, Prepared):
-            preview = result.preview[:50_000]
-            if len(result.preview) > 50_000:
-                preview += "\n\n[界面只预览前 50,000 字符，导出包含完整内容]"
-            self.preview.setPlainText(preview)
+            self.preview.setPlainText(result.preview)
         elif isinstance(result, Failure):
             self.preview.setPlainText(result.message)
 
@@ -321,23 +326,23 @@ class FeaturePage(QWidget):
             self.output.setToolTip(directory)
 
     def prepare(self):
-        if not self.paths:
-            self.window.log("请先添加 SRT 或 TXT 文件。")
-            return
-        try:
-            options = self.options()
-        except ValueError as exc:
-            self.window.log(str(exc))
-            return
-        paths = list(self.paths)
         self.invalidate()
-        self.window.start_task(lambda cancel, progress: prepare_batch(paths, options, cancel, progress), self.prepared)
+        self.live.start()
+
+    def preview_operation(self):
+        paths, options = list(self.paths), self.options()
+        return lambda cancel, progress: prepare_batch(paths, options, cancel, progress)
+
+    def preview_failed(self, message):
+        self.summary.setText(message)
 
     def prepared(self, results):
         self.results = results
         self.refresh_table()
         valid = sum(isinstance(r, Prepared) for r in results)
-        self.summary.setText(f"{valid} 个可导出 · {len(results)-valid} 个失败")
+        fmt = self.output_format.currentData().upper()
+        self.summary.setText(f"{fmt} · {self.output_encoding.currentText()} · {valid} 个有效 · {len(results)-valid} 个失败")
+        self.export_button.setText(f"导出 {fmt}（{valid}）")
         self.export_button.setEnabled(valid > 0)
         self.window.log(f"预览完成：{valid} 个有效，{len(results)-valid} 个失败。")
         for result in results:
@@ -349,20 +354,22 @@ class FeaturePage(QWidget):
             self.show_preview()
 
     def export(self):
+        if self.window.worker or not any(isinstance(r, Prepared) for r in self.results):
+            return
         if not self.output.text().strip() or not Path(self.output.text()).is_dir():
             self.window.log("请先选择已存在的输出文件夹。")
             return
         items = [r for r in self.results if isinstance(r, Prepared)]
         directory = Path(self.output.text())
-        self.window.start_task(lambda cancel, progress: export_batch(items, directory, cancel, progress), self.exported)
+        self.window.start_task(lambda cancel, progress: export_batch(items, directory, cancel, progress),
+                               self.exported, failed=lambda message: self.summary.setText(f"导出失败：{message}"))
 
     def exported(self, results):
         successes = [r for r in results if isinstance(r, Path)]
         self.summary.setText(f"已导出 {len(successes)} 个 · 失败/取消 {len(results)-len(successes)} 个")
         for result in results:
             self.window.log(f"已导出：{result}" if isinstance(result, Path) else f"{result.source.name}：{result.message}")
-        self.export_button.setEnabled(False)
-        self.results = []
+        self.export_button.setEnabled(bool(self.results))
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() and not self.window.worker:
@@ -379,6 +386,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.worker = None
+        self.preview_owner = None
+        self.task_callback = None
+        self.failure_callback = None
         self.setWindowTitle(f"SRTTools {__version__} · 字幕处理工具")
         self.resize(1180, 900)
         self.setMinimumSize(850, 620)
@@ -391,7 +401,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(212)
+        sidebar.setFixedWidth(180)
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(18, 26, 18, 20)
         brand = QLabel("SRTTools")
@@ -425,7 +435,8 @@ class MainWindow(QMainWindow):
         self.navigation.currentRowChanged.connect(self.stack.setCurrentIndex)
         self.navigation.setCurrentRow(0)
         right.addWidget(self.stack, 1)
-        status = QHBoxLayout()
+        self.task_status = QWidget()
+        status = QHBoxLayout(self.task_status)
         status.setContentsMargins(22, 0, 22, 0)
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
@@ -435,12 +446,23 @@ class MainWindow(QMainWindow):
         self.cancel.setEnabled(False)
         status.addWidget(self.progress, 1)
         status.addWidget(self.cancel)
-        right.addLayout(status)
+        right.addWidget(self.task_status)
+        self.task_status.hide()
+        self.logs_button = QPushButton("操作日志")
+        self.logs_button.setCheckable(True)
+        self.logs_button.setFlat(True)
+        log_row = QHBoxLayout()
+        log_row.setContentsMargins(22, 0, 22, 4)
+        log_row.addStretch()
+        log_row.addWidget(self.logs_button)
+        right.addLayout(log_row)
         self.logs = QPlainTextEdit()
         self.logs.setReadOnly(True)
         self.logs.setFixedHeight(80)
         self.logs.setPlaceholderText("操作日志 · 最新记录在最上方")
         right.addWidget(self.logs)
+        self.logs.hide()
+        self.logs_button.toggled.connect(self.logs.setVisible)
         layout.addLayout(right, 1)
 
     def log(self, message):
@@ -448,45 +470,78 @@ class MainWindow(QMainWindow):
         self.logs.setPlainText("\n".join(content.splitlines()[:300]))
         self.logs.moveCursor(QTextCursor.MoveOperation.Start)
         self.logs.verticalScrollBar().setValue(0)
+        self.logs_button.setToolTip(message)
+        self.logs_button.setText("操作日志 · 有记录")
 
     def set_busy(self, busy):
         self.navigation.setEnabled(not busy)
         for page in self.pages:
-            page.controls.setEnabled(not busy)
+            live_edit = busy and self.preview_owner is page
+            page.controls.setEnabled(not busy or (live_edit and isinstance(page, FeaturePage)))
             page.footer.setEnabled(not busy)
             if isinstance(page, SrtWorkbench):
                 page.list_controls.setEnabled(not busy)
+                page.format_controls.setEnabled(not busy or live_edit)
+                page.settings.setEnabled(not busy or live_edit)
+                page.adjust_format()
         self.cancel.setEnabled(busy)
+        self.task_status.setVisible(busy)
 
-    def start_task(self, operation, callback):
+    def start_task(self, operation, callback, *, preview_owner=None, failed=None):
         if self.worker:
             return
+        self.preview_owner = preview_owner
         self.set_busy(True)
         self.progress.setValue(0)
         self.worker = Worker(operation, self)
-        self.worker.completed.connect(callback)
-        self.worker.failed.connect(self.log)
+        self.task_callback = callback
+        self.failure_callback = failed
+        # Keep Python callbacks on the GUI-owned window, not signal closures.
+        self.worker.completed.connect(self.task_completed, Qt.ConnectionType.QueuedConnection)
+        self.worker.failed.connect(self.task_failed, Qt.ConnectionType.QueuedConnection)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.task_finished)
         self.worker.start()
 
+    @Slot(object)
+    def task_completed(self, result):
+        if self.task_callback:
+            self.task_callback(result)
+
+    @Slot(str)
+    def task_failed(self, message):
+        self.log(message)
+        if self.failure_callback:
+            self.failure_callback(message)
+
+    @Slot(int, int, str)
     def on_progress(self, done, total, name):
         self.progress.setValue(round(done * 100 / max(total, 1)))
         self.progress.setFormat(f"{done} / {total}")
 
+    @Slot()
     def task_finished(self):
+        self.worker.wait()
         self.worker.deleteLater()
         self.worker = None
+        self.preview_owner = None
+        self.task_callback = None
+        self.failure_callback = None
         self.set_busy(False)
         self.idle.emit()
 
     def cancel_task(self):
         if self.worker:
+            if self.preview_owner:
+                self.preview_owner.live.cancel()
             self.worker.cancel.set()
             self.cancel.setEnabled(False)
             self.log("已请求取消，等待当前文件处理结束。")
 
     def closeEvent(self, event):
+        for page in self.pages:
+            page.live.pending = False
+            page.live.timer.stop()
         if self.worker:
             self.cancel_task()
             self.log("任务结束后可关闭窗口。")
