@@ -67,12 +67,16 @@ test('workflow CRUD, restart restoration and failed save preserve configuration 
   await expect(page.getByLabel('已保存流程', { exact: true })).toHaveValue(/./u);
   await button(page, '删除流程').click(); await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click(); await expect(page.getByLabel('已保存流程', { exact: true }).locator('option')).toHaveText(['选择流程', '副本改名', '标准清理']);
   await button(page, '删除流程').click(); await page.getByRole('dialog').getByRole('button', { name: '确认删除流程', exact: true }).click();
+  // Deletion is asynchronous (including the shared Web Lock). Finish it before injecting a later save failure.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByLabel('已保存流程', { exact: true }).locator('option')).toHaveText(['选择流程', '标准清理']);
   await expect(page.locator('.workflow-step')).toHaveCount(4);
+  const beforeFailedSave = await page.evaluate(() => localStorage.getItem('subtitle-tools:workflow-presets-v1'));
   await page.evaluate(() => { const original = Storage.prototype.setItem; Storage.prototype.setItem = function(key, value) { if (key === 'subtitle-tools:workflow-presets-v1') throw new DOMException('full', 'QuotaExceededError'); original.call(this, key, value); }; });
   await page.getByLabel('偏移量（毫秒）', { exact: true }).fill('777'); await button(page, '保存流程').click(); await page.getByRole('dialog').getByLabel('保存名称', { exact: true }).fill('保存失败保留'); await page.getByRole('dialog').getByRole('button', { name: '确认保存流程', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible(); await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click(); await expect(page.getByLabel('偏移量（毫秒）', { exact: true })).toHaveValue('777');
   const stored = await page.evaluate(() => localStorage.getItem('subtitle-tools:workflow-presets-v1'));
-  expect(stored).toContain('标准清理'); expect(stored).not.toContain('保存失败保留'); expect(stored).not.toContain('outputEncoding'); expect(stored).not.toContain('sourcePath');
+  expect(stored).toBe(beforeFailedSave); expect(stored).toContain('标准清理'); expect(stored).not.toContain('保存失败保留'); expect(stored).not.toContain('outputEncoding'); expect(stored).not.toContain('sourcePath');
 });
 
 test('tool preset snapshot, explicit privacy export and conflict preview import retain old settings and source queue', async ({ page }) => {
