@@ -1,0 +1,52 @@
+{
+  "appVersion": "0.4.0",
+  "exportedAt": "2026-11-04T00:00:00.000Z",
+  "format": "srttools-presets",
+  "items": [
+    {
+      "createdAt": "2026-11-04T00:00:00.000Z",
+      "description": "删除空白条目、清理空格、替换示例错字，并将时间延后 500 毫秒。用于 SRT；其他格式请先检查适用性。",
+      "id": "8d22bd7c-3218-4532-a49f-889cfba45280",
+      "kind": "workflow",
+      "lossyMode": "reject",
+      "name": "中文字幕标准清理示例",
+      "schemaVersion": 1,
+      "steps": [
+        {
+          "enabled": true,
+          "id": "8194ca75-9d93-4da6-9080-2ae2e445d583",
+          "operation": "remove-empty",
+          "params": {}
+        },
+        {
+          "enabled": true,
+          "id": "01aa247e-c987-4c01-932c-bc6f155a7618",
+          "operation": "clean-spaces",
+          "params": {}
+        },
+        {
+          "enabled": true,
+          "id": "908237cd-c918-4bcb-bfc3-f87912ec7944",
+          "operation": "replace",
+          "params": {
+            "caseSensitive": false,
+            "find": "觉的",
+            "regex": false,
+            "replacement": "觉得"
+          }
+        },
+        {
+          "enabled": true,
+          "id": "9d879ca0-ebca-4f93-b652-f3d52fbd92d2",
+          "operation": "shift",
+          "params": {
+            "offsetMs": 500,
+            "policy": "reject"
+          }
+        }
+      ],
+      "updatedAt": "2026-11-04T00:00:00.000Z"
+    }
+  ],
+  "schemaVersion": 1
+}

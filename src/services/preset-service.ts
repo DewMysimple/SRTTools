@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defaultParameters, tools, validateParameters, type ToolDefinition } from '../app/tool-registry';
 import { PresetJsonParseError, PRESET_STORAGE_KEY, readLocalValue, writeLocalValue } from './persistence';
+import { serializePresetOperation as serialize } from './preset-queue';
 
 export interface ToolPreset {
   id: string;
@@ -23,9 +24,10 @@ export class PresetError extends Error {
   }
 }
 
-interface PresetStore {
+export interface PresetStore {
   presets: ToolPreset[];
   futureItems: Record<string, unknown>[];
+  quarantinedItems: unknown[];
   ignoredCount: number;
 }
 
@@ -43,13 +45,6 @@ const metadataSchema = z.object({
   id: z.uuid(), toolId: z.string(), name: z.string(),
   createdAt: z.iso.datetime({ offset: true }), updatedAt: z.iso.datetime({ offset: true }),
 });
-let pending: Promise<unknown> = Promise.resolve();
-
-function serialize<T>(operation: () => Promise<T>): Promise<T> {
-  const result = pending.then(operation);
-  pending = result.catch(() => undefined);
-  return result;
-}
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
@@ -131,7 +126,11 @@ async function readStore(): Promise<PresetStore> {
     if (error instanceof PresetJsonParseError) throw corruptStore();
     throw new PresetError('storage-error', '无法读取本地预设。请稍后重试。');
   }
-  const store: PresetStore = { presets: [], futureItems: [], ignoredCount: 0 };
+  return decodeStore(raw);
+}
+
+function decodeStore(raw: unknown): PresetStore {
+  const store: PresetStore = { presets: [], futureItems: [], quarantinedItems: [], ignoredCount: 0 };
   if (raw === null) return store;
   const envelope = asRecord(raw);
   if (envelope && hasOtherVersion(envelope)) {
@@ -154,12 +153,15 @@ async function readStore(): Promise<PresetStore> {
     const preset = item && decodePreset(item);
     if (!preset) {
       store.ignoredCount++;
+      store.quarantinedItems.push(value);
       continue;
     }
     const names = namesByTool.get(preset.toolId) ?? new Set<string>();
     const key = nameKey(preset.name);
     if (ids.has(preset.id.toLowerCase()) || names.has(key) || names.size >= TOOL_LIMIT) {
       store.ignoredCount++;
+      // Deleting the first copy must not silently reactivate a previously conflicting row.
+      store.quarantinedItems.push({ schemaVersion: 1, quarantined: true, reason: 'conflicting-tool-preset', raw: value });
       continue;
     }
     ids.add(preset.id.toLowerCase());
@@ -170,8 +172,14 @@ async function readStore(): Promise<PresetStore> {
   return store;
 }
 
-async function writeStore(presets: ToolPreset[], futureItems: Record<string, unknown>[] = []): Promise<void> {
-  const value = { schemaVersion: SCHEMA_VERSION, presets: [...presets, ...futureItems] };
+/** Shared repository rules for the exchange layer; callers must hold the preset queue. */
+export const toolPresetRepository = {
+  decodeStore, decodePreset, normalizeName, nameKey, checkedParameters, toolDefinition,
+  limits: { perTool: TOOL_LIMIT, total: STORE_LIMIT, bytes: MAX_STORE_BYTES },
+};
+
+async function writeStore(presets: ToolPreset[], preservedItems: unknown[] = []): Promise<void> {
+  const value = { schemaVersion: SCHEMA_VERSION, presets: [...presets, ...preservedItems] };
   if (sizeOf(value) > MAX_STORE_BYTES) throw new PresetError('limit', '预设存储最多 256 KiB，请缩短文本参数或删除旧预设。');
   try {
     await writeLocalValue(PRESET_STORAGE_KEY, value);
@@ -218,14 +226,14 @@ export async function createPreset(input: { toolId: string; name: string; parame
     if (store.presets.filter(preset => preset.toolId === toolId).length >= TOOL_LIMIT) {
       throw new PresetError('limit', '每个工具最多保存 20 个预设。');
     }
-    if (store.presets.length + store.futureItems.length >= STORE_LIMIT) {
+    if (store.presets.length + store.futureItems.length + store.quarantinedItems.length >= STORE_LIMIT) {
       throw new PresetError('limit', '本机最多保存 100 个工具预设。');
     }
     const now = new Date().toISOString();
     const preset: ToolPreset = {
       id: crypto.randomUUID(), toolId, name, parameters, schemaVersion: SCHEMA_VERSION, createdAt: now, updatedAt: now,
     };
-    await writeStore([preset, ...store.presets], store.futureItems);
+    await writeStore([preset, ...store.presets], [...store.futureItems, ...store.quarantinedItems]);
     return preset;
   });
 }
@@ -242,7 +250,7 @@ export async function updatePreset(toolId: string, id: string, changes: PresetCh
       updatedAt: new Date(Math.max(Date.now(), Date.parse(previous.updatedAt) + 1)).toISOString(),
     };
     checkDuplicate(store.presets, toolId, preset.name, id);
-    await writeStore(store.presets.map(item => item.id === id ? preset : item), store.futureItems);
+    await writeStore(store.presets.map(item => item.id === id ? preset : item), [...store.futureItems, ...store.quarantinedItems]);
     return preset;
   });
 }
@@ -252,7 +260,7 @@ export async function deletePreset(toolId: string, id: string): Promise<void> {
   return serialize(async () => {
     const store = await readStore();
     matchingPreset(store, toolId, id);
-    await writeStore(store.presets.filter(item => item.id !== id), store.futureItems);
+    await writeStore(store.presets.filter(item => item.id !== id), [...store.futureItems, ...store.quarantinedItems]);
   });
 }
 

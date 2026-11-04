@@ -98,8 +98,10 @@ describe('tool preset service', () => {
     expect(result.presets).toEqual([{ ...fixture, parameters: { ...fixture.parameters, caseSensitive: false, regex: false } }]);
     await updatePreset('replace', fixture.id, { name: '改名' });
     const stored = JSON.parse(localStorage.getItem(storageKey)!);
-    expect(stored.presets).toHaveLength(2);
+    expect(stored.presets).toHaveLength(5);
     expect(stored.presets).toContainEqual(future);
+    expect(stored.presets).toContainEqual({ ...fixture, id: 'invalid-id' });
+    expect(stored.presets).toContainEqual({ ...fixture, toolId: 'unknown' });
     expect(JSON.stringify(stored)).not.toContain('must not be read');
   });
 
@@ -117,6 +119,23 @@ describe('tool preset service', () => {
     expect(localStorage.getItem('subtitle-tools:settings')).toBe('{"theme":"dark"}');
     expect(localStorage.getItem('subtitle-tools:history')).toBe('[{"id":"history"}]');
     await expect(recoverPresetStore()).rejects.toMatchObject({ code: 'storage-error' });
+  });
+
+  it('retains damaged rows within capacity and prevents conflicting presets from resurrecting after deletion', async () => {
+    const duplicate = { ...fixture, name: 'duplicate identity' };
+    const sameName = { ...fixture, id: crypto.randomUUID() };
+    const damaged = { schemaVersion: 1, id: 'broken', original: ['retain me'] };
+    localStorage.setItem(storageKey, presetData([fixture, duplicate, sameName, damaged]));
+    await deletePreset('replace', fixture.id);
+    await expect(listPresets('replace')).resolves.toEqual({ presets: [], ignoredCount: 3 });
+    const rows = JSON.parse(localStorage.getItem(storageKey)!).presets;
+    expect(rows).toContainEqual(damaged);
+    expect(rows).toContainEqual({ schemaVersion: 1, quarantined: true, reason: 'conflicting-tool-preset', raw: duplicate });
+    expect(rows).toContainEqual({ schemaVersion: 1, quarantined: true, reason: 'conflicting-tool-preset', raw: sameName });
+    const hundredBroken = Array.from({ length: 100 }, () => damaged);
+    localStorage.setItem(storageKey, presetData(hundredBroken));
+    await expect(createPreset({ toolId: 'replace', name: '超过隔离容量', parameters: replacement })).rejects.toMatchObject({ code: 'limit' });
+    expect(localStorage.getItem(storageKey)).toBe(presetData(hundredBroken));
   });
 
   it('never resets an unsupported schema or unreadable IPC storage', async () => {
