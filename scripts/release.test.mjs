@@ -15,22 +15,82 @@ async function fixture(t) {
   return root;
 }
 
-async function release(root, directory, text = 'executable') {
+async function release(root, directory, text = 'executable', { version = '0.2.0', smoke = {} } = {}) {
   await fs.mkdir(path.join(directory, 'SRTTools'), { recursive: true });
   await fs.writeFile(path.join(directory, 'SRTTools/subtitle-tools.exe'), text);
   await fs.writeFile(path.join(directory, 'SRTTools-Setup.exe'), 'installer-' + text);
   await zipPortable(root, path.join(directory, 'SRTTools'), path.join(directory, 'SRTTools.zip'));
   const files = await fileRecords(root, directory, await walkFiles(root, directory));
   const info = {
-    managedBy: MANAGED_BY, schemaVersion: 1, product: 'SRTTools', version: '0.2.0',
+    managedBy: MANAGED_BY, schemaVersion: 1, product: 'SRTTools', version,
     commit: 'a'.repeat(40), builtAt: '2026-11-04T00:00:00.000Z', files,
     smoke: { status: 'PASS', executableSha256: await sha256(path.join(directory, 'SRTTools/subtitle-tools.exe')),
       checks: { startup: true, import: true, process: true, export: true },
-      originalPreserved: true, shutdown: true, storeRestored: true, cleanupComplete: true },
+      originalPreserved: true, shutdown: true, storeRestored: true, cleanupComplete: true, ...smoke },
   };
   await writeMetadata(directory, info);
   return info;
 }
+
+const workflowChecks = {
+  fourStepWorkflow: true, previewAndExecutionBytes: true, presetRestartRoundTrip: true,
+  nativePresetJsonExchange: true, invalidPresetPreservesStore: true, nestedDirectoryWrite: true,
+  multiRootZipManifest: true, sourceOverlapRejected: true, failedWriteRetry: true, cancelRetry: true,
+};
+
+test('v0.4 native evidence requires the workflow scenario and every real workflow check', async t => {
+  const root = await fixture(t);
+  const directory = path.join(root, 'release-output');
+  const info = await release(root, directory, 'workflow executable', { version: '0.4.0' });
+  await assert.rejects(verifyRelease(root, directory), /workflow/u);
+  await verifyRelease(root, directory, { requireSmoke: false });
+  for (const version of ['0.4.1', '0.10.0', '1.0.0']) {
+    info.version = version;
+    await writeMetadata(directory, info);
+    await assert.rejects(verifyRelease(root, directory), /workflow/u);
+  }
+  info.version = '0.4.0';
+  info.smoke.workflowChecks = workflowChecks;
+  for (const scenario of [undefined, 'smoke', 'features']) {
+    info.smoke.scenario = scenario;
+    await writeMetadata(directory, info);
+    await assert.rejects(verifyRelease(root, directory), /workflow/u);
+  }
+  info.smoke.scenario = 'workflow';
+  await writeMetadata(directory, info);
+  await verifyRelease(root, directory);
+  for (const key of Object.keys(workflowChecks)) {
+    for (const invalid of [undefined, false, 'true']) {
+      info.smoke.workflowChecks = { ...workflowChecks, [key]: invalid };
+      await writeMetadata(directory, info);
+      await assert.rejects(verifyRelease(root, directory), /workflow/u, `${key} must be true`);
+    }
+  }
+  info.smoke.workflowChecks = workflowChecks;
+  info.smoke.originalPreserved = false;
+  await writeMetadata(directory, info);
+  await assert.rejects(verifyRelease(root, directory), /native/u);
+});
+
+test('an incomplete workflow candidate preserves the byte-identical v0.3 last success until full verification', async t => {
+  const root = await fixture(t);
+  const final = path.join(root, 'release-output');
+  await release(root, final, 'v0.3 last success', { version: '0.3.0' });
+  await verifyRelease(root, final);
+  const original = await fileRecords(root, final, await walkFiles(root, final));
+  const stage = await makeStage(root);
+  const candidate = path.join(stage, 'candidate');
+  const info = await release(root, candidate, 'v0.4 candidate', { version: '0.4.0' });
+  await assert.rejects(promoteRelease(root, candidate, stage), /workflow/u);
+  assert.deepEqual(await fileRecords(root, final, await walkFiles(root, final)), original);
+  assert.equal((await verifyRelease(root, final)).version, '0.3.0');
+  info.smoke.scenario = 'workflow';
+  info.smoke.workflowChecks = workflowChecks;
+  await writeMetadata(candidate, info);
+  await promoteRelease(root, candidate, stage);
+  assert.equal((await verifyRelease(root, final)).version, '0.4.0');
+  assert.deepEqual(await fs.readdir(stage), ['.stage.json']);
+});
 
 test('manifest, ZIP image and checksum verification detect unknown or changed files', async t => {
   const root = await fixture(t);

@@ -11,6 +11,11 @@ export const MANAGED_BY = 'srttools-release-v1';
 export const RELEASE_NAME = 'release-output';
 export const WORK_NAME = '.release-work';
 export const PAYLOAD_NAMES = ['SRTTools.zip', 'SRTTools-Setup.exe'];
+export const WORKFLOW_SMOKE_CHECKS = Object.freeze([
+  'fourStepWorkflow', 'previewAndExecutionBytes', 'presetRestartRoundTrip',
+  'nativePresetJsonExchange', 'invalidPresetPreservesStore', 'nestedDirectoryWrite',
+  'multiRootZipManifest', 'sourceOverlapRejected', 'failedWriteRetry', 'cancelRetry',
+]);
 const HEADER_NAMES = ['SHA256SUMS.txt', 'build-info.json'];
 
 export function inside(root, target) {
@@ -202,6 +207,14 @@ export async function verifyRelease(root, directory, { requireSmoke = true } = {
     || !['startup', 'import', 'process', 'export'].every(key => info.smoke.checks?.[key] === true)
     || !['originalPreserved', 'shutdown', 'storeRestored', 'cleanupComplete'].every(key => info.smoke[key] === true))) {
     throw new Error('This release has no passing native import/process/export smoke evidence.');
+  }
+  const [major, minor] = info.version.split('.').map(Number);
+  // Legacy manifests remain valid as protected previous releases. New releases must
+  // prove the full workflow on the actual ZIP-extracted executable.
+  if (requireSmoke && (major > 0 || minor >= 4 || info.smoke?.scenario === 'workflow')
+    && (info.smoke?.scenario !== 'workflow'
+      || !WORKFLOW_SMOKE_CHECKS.every(key => info.smoke.workflowChecks?.[key] === true))) {
+    throw new Error('This release has no passing native workflow smoke evidence.');
   }
   return info;
 }

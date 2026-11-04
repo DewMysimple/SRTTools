@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
 import {
-  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, controlledPath, exists, fileRecords, makeStage,
+  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, controlledPath, exists, fileRecords, makeStage,
   promoteRelease, recordPortableInventory, removeTree, run, sha256, validateStage, verifyRelease, walkFiles,
   withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths, releaseResources,
 } from './release-common.mjs';
@@ -175,11 +175,14 @@ if (args.includes('--check')) {
       if (JSON.stringify(extracted) !== JSON.stringify(expected)) throw new Error('Extracted ZIP inventory/hash mismatch.');
       const report = path.join(stage, 'portable-smoke.json');
       await run('pwsh', ['-NoProfile', '-File', path.join(root, 'scripts/windows-smoke.ps1'),
-        '-ExePath', path.join(unpacked, 'SRTTools/subtitle-tools.exe'), '-ReportPath', report, '-ExpectedVersion', baseline.version]);
+        '-ExePath', path.join(unpacked, 'SRTTools/subtitle-tools.exe'), '-ReportPath', report,
+        '-ExpectedVersion', baseline.version, '-Scenario', 'workflow']);
       const smoke = JSON.parse(await fs.readFile(report, 'utf8'));
       info.smoke = {
         status: smoke.status, executableSha256: smoke.executableSha256?.toUpperCase(),
         checks: smoke.checks, checkedAt: smoke.checkedAt,
+        scenario: smoke.scenario,
+        workflowChecks: Object.fromEntries(WORKFLOW_SMOKE_CHECKS.map(key => [key, smoke.workflowChecks?.[key]])),
         originalPreserved: smoke.originalPreserved, shutdown: smoke.shutdown, storeRestored: smoke.storeRestored,
         cleanupComplete: smoke.cleanupComplete,
       };
@@ -202,6 +205,9 @@ if (args.includes('--check')) {
         failureKind: native?.failureKind ?? error.name,
         failureReason: native?.failureReason,
         checks: native?.checks,
+        scenario: native?.scenario,
+        workflowChecks: native?.workflowChecks
+          && Object.fromEntries(WORKFLOW_SMOKE_CHECKS.map(key => [key, native.workflowChecks[key]])),
       }, null, 2) + '\n');
       throw error;
     } finally {

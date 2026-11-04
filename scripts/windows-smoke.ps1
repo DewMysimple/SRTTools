@@ -2,7 +2,7 @@
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
   [string] $ExpectedVersion,
-  [ValidateSet('smoke', 'features', 'folder', 'explorer')][string] $Scenario = 'smoke',
+  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow')][string] $Scenario = 'smoke',
   [string] $NsisPath,
   [switch] $AllowUnavailableContextMenu
 )
@@ -369,6 +369,8 @@ try {
     . (Join-Path $PSScriptRoot 'windows-folder-steps.ps1')
   } elseif ($Scenario -eq 'explorer') {
     . (Join-Path $PSScriptRoot 'windows-explorer-steps.ps1')
+  } elseif ($Scenario -eq 'workflow') {
+    . (Join-Path $PSScriptRoot 'windows-workflow-steps.ps1')
   } else {
   $stage = 'import'
   Click-Control '选择文件'
