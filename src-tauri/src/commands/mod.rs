@@ -1,7 +1,7 @@
 mod safe_files;
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::{
     collections::HashSet,
     fs,
@@ -11,13 +11,16 @@ use std::{
 };
 use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
-use tauri_plugin_store::StoreExt;
+use tauri_plugin_store::{resolve_store_path, Error as StoreError, StoreExt};
 
 const INPUT_LIMIT: u64 = 32 * 1024 * 1024;
 const IMPORT_BATCH_LIMIT: u64 = 128 * 1024 * 1024;
 const IMPORT_COUNT_LIMIT: usize = 100;
 const OUTPUT_LIMIT: usize = 256 * 1024 * 1024;
 const STORE_NAME: &str = "subtitle-tools.json";
+const PRESET_KEY: &str = "tool-presets-v1";
+const PRESET_LIMIT: usize = 256 * 1024;
+static STORE_TRANSACTION: Mutex<()> = Mutex::new(());
 
 fn display_path(path: &Path) -> String {
     let value = path.to_string_lossy();
@@ -407,10 +410,33 @@ fn open_directory(path: &Path) -> std::io::Result<()> {
 }
 
 fn validate_store_key(key: &str) -> Result<(), String> {
-    if ["settings", "history"].contains(&key) {
+    if ["settings", "history", PRESET_KEY].contains(&key) {
         Ok(())
     } else {
         Err("无效的本地设置键。".into())
+    }
+}
+
+fn local_values(app: &AppHandle) -> Result<(Map<String, Value>, PathBuf), String> {
+    let path = resolve_store_path(app, STORE_NAME).map_err(|e| format!("无法定位本地设置：{e}"))?;
+    // Load explicitly to detect read failures, and release the temporary Store
+    // handle so the plugin cannot rewrite the file on application exit.
+    let store = app
+        .store_builder(STORE_NAME)
+        .create_new()
+        .disable_auto_save()
+        .build()
+        .map_err(|e| format!("无法加载本地设置：{e}"))?;
+    let loaded = store.reload_ignore_defaults();
+    let values = store.entries().into_iter().collect();
+    store.close_resource();
+    match loaded {
+        Ok(()) => Ok((values, path)),
+        Err(StoreError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok((Map::new(), path))
+        }
+        Err(StoreError::Deserialize(_)) => Err("本地设置文件损坏，请备份后恢复。".into()),
+        Err(error) => Err(format!("无法加载本地设置：{error}")),
     }
 }
 
@@ -422,10 +448,11 @@ pub fn get_local_value(
 ) -> Result<Option<Value>, String> {
     ensure_main(&window)?;
     validate_store_key(&key)?;
-    let store = app
-        .store(STORE_NAME)
-        .map_err(|e| format!("无法加载本地设置：{e}"))?;
-    Ok(store.get(key))
+    let _transaction = STORE_TRANSACTION
+        .lock()
+        .map_err(|_| "本地设置正在恢复，请重启应用。")?;
+    let (mut values, _) = local_values(&app)?;
+    Ok(values.remove(&key))
 }
 
 #[tauri::command]
@@ -437,14 +464,22 @@ pub fn set_local_value(
 ) -> Result<(), String> {
     ensure_main(&window)?;
     validate_store_key(&key)?;
-    if serde_json::to_vec(&value).map_err(|e| e.to_string())?.len() > 4 * 1024 * 1024 {
+    let bytes = serde_json::to_vec(&value).map_err(|e| e.to_string())?;
+    if key == PRESET_KEY && bytes.len() > PRESET_LIMIT {
+        return Err("参数预设过大，请缩短文本或删除不用的预设。".into());
+    }
+    if bytes.len() > 4 * 1024 * 1024 {
         return Err("本地设置或历史记录过大，请先清理处理记录。".into());
     }
-    let store = app
-        .store(STORE_NAME)
-        .map_err(|e| format!("无法加载本地设置：{e}"))?;
-    store.set(key, value);
-    store.save().map_err(|e| format!("无法保存本地设置：{e}"))
+    let _transaction = STORE_TRANSACTION
+        .lock()
+        .map_err(|_| "本地设置正在恢复，请重启应用。")?;
+    let (mut values, path) = local_values(&app)?;
+    values.insert(key, value);
+    let content = serde_json::to_vec_pretty(&values).map_err(|e| e.to_string())?;
+    safe_files::replace_local_store(&path, &content)
+        .map_err(|e| format!("无法保存本地设置：{e}"))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -486,6 +521,8 @@ mod tests {
     fn only_fixed_store_keys_are_accessible() {
         assert!(validate_store_key("settings").is_ok());
         assert!(validate_store_key("history").is_ok());
+        assert!(validate_store_key("tool-presets-v1").is_ok());
+        assert!(validate_store_key("tool-presets-v2").is_err());
         assert!(validate_store_key("../secret.json").is_err());
     }
 

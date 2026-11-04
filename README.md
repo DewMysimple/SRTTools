@@ -1,6 +1,6 @@
 # Subtitle Tools
 
-极简、轻量的 Windows 本地字幕工具箱。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕处理在本机完成，不上传文件。
+Subtitle Tools 0.2.0 是极简、轻量的 Windows 本地字幕工具箱。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕处理在本机完成，不上传文件。
 
 操作流程：**选择文件 → 选择工具 → 设置参数 → 预览 → 确认导出**。默认生成 `原文件名_processed.ext`，不会覆盖原文件。
 
@@ -17,6 +17,8 @@
 - UTF-8、UTF-8 BOM、UTF-16 LE / BE 读写；GBK / GB18030 手动导入；CRLF / LF 导出。
 - 原生多选 / 拖放、安全另存为、重名自动避让、文件名模板、ZIP 去重导出、文件统计、空白 SRT 模板。
 - Worker 顺序批处理、逐文件失败隔离、取消与重试、浅色 / 深色 / 系统主题、本地设置与历史摘要持久化。
+- 处理前后按字幕逻辑对齐，可筛选并分页查看增删、正文高亮、毫秒时间及编号变化。
+- 按工具保存本地命名参数预设。应用预设只填充表单并清除旧结果，重新处理后才可导出。
 
 ## 运行环境
 
@@ -57,7 +59,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 npm run tauri -- build
 ```
 
-生成：`src-tauri/target/release/bundle/nsis/Subtitle Tools_0.1.1_x64-setup.exe`。
+生成：`src-tauri/target/release/bundle/nsis/Subtitle Tools_0.2.0_x64-setup.exe`。
 
 NSIS 为当前用户安装，提供简体中文界面。运行程序位于 `src-tauri/target/release/subtitle-tools.exe`。初次构建需要下载 Rust crates 和 NSIS 工具；缺少 WebView2 的机器由安装器下载官方运行时。应用本身没有云端字幕服务。当前包未配置代码签名。
 
@@ -92,10 +94,12 @@ examples/          可手动导入的示例文件
 
 **保存失败怎么办？** 结果保留在当前工具页，可再次选择位置导出；切换工具前请保存。多个文件可一次导出 ZIP。重名文件会追加序号。
 
+**预设保存哪些内容？** 只保存你确认保存的当前工具参数，可能包含你输入的查找和替换文字。编码、文件、导出目录和命名规则仍独立设置。重置表单会恢复工具默认值，并保留已存预设。
+
 **格式转换会丢失什么？** 通用模型保留时间与多行正文，不保留 ASS / SSA 样式特效、VTT 位置等专有信息。TXT 导出不可直接还原时间；TXT 导入必须带可识别的时间行。CSV 必须使用 `index,start,end,text` 四列。
 
 **处理容量？** 单输入文件最多 32 MiB；队列最多 100 个文件、总计 128 MiB；单次原生输出最多 256 MiB。预览每页 20 条。请将更大的工作拆成多批。
 
 **尚未实现？** 简繁转换、关键词过滤、独立字幕匹配、自定义可保存流程、专用每行字数截断工具尚未开放。自动换行是字符规则，不做语义分句。软件不包含视频播放、时间轴或轨道编辑。
 
-历史 0.1.0 验收覆盖 122 项单元与集成测试、9 项浏览器流程、10 项 Rust 测试以及 NSIS 安装、启动与卸载。新版本验收与尚待覆盖的桌面场景见 [v0.1.1 发布检查表](docs/RELEASE_CHECKLIST_v0.1.1.md)，版本变更见[更新记录](docs/CHANGELOG.md)。
+0.2.0 验收、安装器校验值与剩余 Windows 验证范围见[测试记录](docs/TESTING.md)与 [v0.1.1 发布检查表](docs/RELEASE_CHECKLIST_v0.1.1.md)，版本变更见[更新记录](docs/CHANGELOG.md)。

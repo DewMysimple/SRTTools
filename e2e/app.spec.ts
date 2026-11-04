@@ -44,7 +44,7 @@ test('replace preview, export actual bytes and persist metadata history', async 
   await page.getByRole('button', { name: '预览处理结果', exact: true }).click();
   await expect(page.locator('.task-row .status-badge')).toHaveText('已处理');
   await expect(page.locator('.preview-grid').getByText('你好 again', { exact: true })).toBeVisible();
-  await page.locator('.results-panel').screenshot({ path: testInfo.outputPath('replace-preview.png'), animations: 'disabled' });
+  await page.locator('.result-details').screenshot({ path: testInfo.outputPath('replace-preview.png'), animations: 'disabled' });
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: '另存为', exact: true }).click();
   const download = await downloadPromise;

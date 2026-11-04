@@ -10,6 +10,7 @@ export interface Parameter {
   options?: { value: string; label: string }[];
   help?: string;
   min?: number;
+  max?: number;
 }
 export interface ToolDefinition {
   id: string;
@@ -23,7 +24,7 @@ export interface ToolDefinition {
   combined?: boolean;
 }
 const select = (key: string, label: string, choices: [string, string][], initial?: string): Parameter => ({ key, label, type: 'select', default: initial ?? choices[0][0], options: choices.map(([value, label]) => ({ value, label })) });
-const number = (key: string, label: string, initial: number, min?: number): Parameter => ({ key, label, type: 'number', default: initial, min });
+const number = (key: string, label: string, initial: number, min?: number, max?: number): Parameter => ({ key, label, type: 'number', default: initial, min, max });
 const check = (key: string, label: string, initial = false): Parameter => ({ key, label, type: 'checkbox', default: initial });
 const tool = (id: string, name: string, description: string, category: string, icon: LucideIcon, parameters: Parameter[] = [], note = '仅处理字幕正文，保留原始时间和条目顺序。', combined = false): ToolDefinition => ({ id, name, description, category, icon, parameters, note, combined, keywords: [id, category] });
 
@@ -39,11 +40,11 @@ export const tools: ToolDefinition[] = [
   tool('duplicates', '删除重复字幕', '按全部文本或连续重复条目去重', '文本处理', Copy, [select('strategy', '去重范围', [['consecutive', '仅连续重复'], ['all', '全部相同文本']])]),
   tool('punctuation', '标点转换', '在常见中文和英文标点之间转换', '文本处理', Languages, [select('direction', '转换方向', [['zh', '英文标点 → 中文标点'], ['en', '中文标点 → 英文标点']])]),
   tool('case', '英文大小写', '将英文转为大写、小写或单词首字母大写', '文本处理', CaseSensitive, [select('mode', '大小写规则', [['lower', '全部小写'], ['upper', '全部大写'], ['title', '单词首字母大写']])]),
-  tool('wrap', '自动换行', '按每行字符数重新排列字幕文本', '文本处理', WrapText, [number('maxChars', '每行最多字符', 24, 1)], '按 Unicode 字符计数并优先在空格断行；请人工复核语义分句。'),
+  tool('wrap', '自动换行', '按每行字符数重新排列字幕文本', '文本处理', WrapText, [number('maxChars', '每行最多字符', 24, 1, 10_000)], '按 Unicode 字符计数并优先在空格断行；请人工复核语义分句。'),
   tool('strip-html', 'HTML 清理', '移除正文标签并还原常见 HTML 实体', '文本处理', CodeXml),
   tool('merge', '多文件合并', '将多个字幕文件合并为一份 SRT', '合并与拆分', Combine, [select('strategy', '合并顺序', [['file', '按文件列表顺序'], ['time', '按开始时间排序']])], '保留各文件的原始时间；可在下方调整文件顺序，合并后重新编号。', true),
   tool('bilingual', '双语字幕合并', '按编号或时间匹配两份字幕', '合并与拆分', Languages, [select('mode', '匹配方式', [['index', '按字幕编号'], ['time', '按开始时间']]), number('toleranceMs', '时间容差（毫秒）', 300, 0), check('reverse', '第二份文件的文字显示在上方')], '需要恰好两份字幕。未匹配条目会保留，并在摘要中列出。', true),
-  tool('split-count', '按条数拆分', '将字幕拆成若干份，保留原始时间', '合并与拆分', Scissors, [number('count', '每个文件的条目数', 100, 1)], '不重置时间；每份输出重新编号。'),
+  tool('split-count', '按条数拆分', '将字幕拆成若干份，保留原始时间', '合并与拆分', Scissors, [number('count', '每个文件的条目数', 100, 1, 1_000_000)], '不重置时间；每份输出重新编号。'),
   tool('split-time', '按时间拆分', '在指定时间点将字幕分为前后两份', '合并与拆分', Scissors, [number('timeMs', '拆分时间点（毫秒）', 60000, 1)], '跨越分割点的字幕会在两侧裁开，输出保留绝对时间。'),
   tool('compare', '字幕对比', '比较两份字幕的文本与时间差异', '合并与拆分', GitCompareArrows, [number('toleranceMs', '允许的时间差（毫秒）', 100, 0)], '需要恰好两份字幕，导出不含字幕全文的 JSON 差异报告。', true),
   tool('convert', '格式转换', '在 SRT、VTT、TXT、CSV、ASS 之间转换', '格式转换', RefreshCw, [select('format', '输出格式', [['srt', 'SRT · 标准字幕'], ['vtt', 'VTT · 网页字幕'], ['txt', 'TXT · 纯文本'], ['csv', 'CSV · 表格字幕'], ['ass', 'ASS · 基础字幕']])], 'ASS / SSA 的字体、位置、颜色和特效会丢失；VTT 设置会丢失。无时间信息的 TXT 无法生成字幕。CSV 列为 index,start,end,text。'),
@@ -66,13 +67,25 @@ export function defaultParameters(definition: ToolDefinition): Record<string, un
 export function validateParameters(definition: ToolDefinition, params: Record<string, unknown>): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const p of definition.parameters) {
-    const schema = p.type === 'number' ? z.number().int().safe().min(p.min ?? -Number.MAX_SAFE_INTEGER) : p.type === 'checkbox' ? z.boolean() : z.string();
-    if (!schema.safeParse(params[p.key]).success) errors[p.key] = p.type === 'number' ? `请输入${p.min !== undefined ? `不小于 ${p.min} 的` : ''}整数。` : '请检查此项。';
+    if (p.type === 'number') {
+      const schema = z.number().int().min(p.min ?? -Number.MAX_SAFE_INTEGER).max(p.max ?? Number.MAX_SAFE_INTEGER);
+      if (!schema.safeParse(params[p.key]).success) {
+        if (p.min !== undefined && p.max !== undefined) errors[p.key] = `请输入 ${p.min}–${p.max} 范围内的整数。`;
+        else errors[p.key] = p.min !== undefined ? `请输入不小于 ${p.min} 的整数。` : '请输入有效整数。';
+      }
+    } else if (p.type === 'select') {
+      if (!p.options?.some(option => option.value === params[p.key])) errors[p.key] = '请选择受支持的选项。';
+    } else {
+      const expected = p.type === 'checkbox' ? 'boolean' : 'string';
+      if (typeof params[p.key] !== expected) errors[p.key] = '请检查此项。';
+    }
   }
   if (definition.id === 'replace') {
     if (!params.find) errors.find = '请输入要查找的内容。';
     if (params.regex && typeof params.find === 'string') { try { new RegExp(params.find, 'gu'); } catch { errors.find = '正则表达式无效，请检查括号或转义符。'; } }
   }
-  if (definition.id === 'crop' && Number(params.endMs) <= Number(params.startMs)) errors.endMs = '结束时间必须大于开始时间。';
+  if (definition.id === 'crop' && typeof params.endMs === 'number' && typeof params.startMs === 'number' && params.endMs <= params.startMs) {
+    errors.endMs = '结束时间必须大于开始时间。';
+  }
   return errors;
 }

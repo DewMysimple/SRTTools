@@ -1,6 +1,14 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
-export type StorageKey = 'settings' | 'history';
+export const PRESET_STORAGE_KEY = 'tool-presets-v1';
+export type StorageKey = 'settings' | 'history' | typeof PRESET_STORAGE_KEY;
+
+export class PresetJsonParseError extends Error {
+  constructor() {
+    super('本地预设 JSON 损坏，无法读取。');
+    this.name = 'PresetJsonParseError';
+  }
+}
 
 /** Desktop storage paths are fixed in Rust, never supplied by the renderer. */
 export async function readLocalValue(key: StorageKey): Promise<unknown> {
@@ -10,6 +18,7 @@ export async function readLocalValue(key: StorageKey): Promise<unknown> {
   try {
     return JSON.parse(raw) as unknown;
   } catch {
+    if (key === PRESET_STORAGE_KEY) throw new PresetJsonParseError();
     throw new Error('本地设置文件损坏，无法读取。请清理相应设置后重试。');
   }
 }

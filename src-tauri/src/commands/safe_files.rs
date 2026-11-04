@@ -52,23 +52,7 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 
 pub fn write_unique(directory: &Path, name: &str, bytes: &[u8]) -> io::Result<PathBuf> {
     validate_name(name).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let temporary = directory.join(format!(
-        ".subtitle-tools-{}-{nonce}-{}.tmp",
-        std::process::id(),
-        SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    ));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        drop(file);
+    write_staged(directory, bytes, |temporary| {
         let source = Path::new(name);
         let stem = source.file_stem().unwrap_or_default().to_string_lossy();
         let extension = source.extension().unwrap_or_default().to_string_lossy();
@@ -78,7 +62,7 @@ pub fn write_unique(directory: &Path, name: &str, bytes: &[u8]) -> io::Result<Pa
             } else {
                 format!("{stem} ({attempt}).{extension}")
             });
-            match publish(&temporary, &target) {
+            match publish(temporary, &target, false) {
                 Ok(()) => return Ok(target),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
                 Err(error) => return Err(error),
@@ -88,6 +72,41 @@ pub fn write_unique(directory: &Path, name: &str, bytes: &[u8]) -> io::Result<Pa
             io::ErrorKind::AlreadyExists,
             "同名文件过多，请更换文件名。",
         ))
+    })
+}
+
+/// Replace only the application's own settings file after its new content is complete.
+pub(super) fn replace_local_store(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let directory = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "无效的本地设置位置。"))?;
+    fs::create_dir_all(directory)?;
+    write_staged(directory, bytes, |temporary| publish(temporary, path, true))
+}
+
+fn write_staged<T>(
+    directory: &Path,
+    bytes: &[u8],
+    commit: impl FnOnce(&Path) -> io::Result<T>,
+) -> io::Result<T> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary = directory.join(format!(
+        ".subtitle-tools-{}-{nonce}-{}.tmp",
+        std::process::id(),
+        SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)?;
+    let result = (|| {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        commit(&temporary)
     })();
     // Remove a partial temporary file after failure. A published result is never removed.
     let _ = fs::remove_file(&temporary);
@@ -95,14 +114,20 @@ pub fn write_unique(directory: &Path, name: &str, bytes: &[u8]) -> io::Result<Pa
 }
 
 #[cfg(windows)]
-fn publish(source: &Path, target: &Path) -> io::Result<()> {
+fn publish(source: &Path, target: &Path, replace: bool) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
-    // Deliberately omit MOVEFILE_REPLACE_EXISTING. Windows publishes on the same volume
-    // without an existence-check race and supports NTFS, FAT and exFAT targets.
-    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) } != 0 {
+    // Exported subtitles omit the replace flag. Only the fixed local store can use it.
+    let flags = if replace {
+        MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING
+    } else {
+        MOVEFILE_WRITE_THROUGH
+    };
+    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), flags) } != 0 {
         Ok(())
     } else {
         Err(io::Error::last_os_error())
@@ -110,8 +135,12 @@ fn publish(source: &Path, target: &Path) -> io::Result<()> {
 }
 
 #[cfg(not(windows))]
-fn publish(source: &Path, target: &Path) -> io::Result<()> {
-    fs::hard_link(source, target)
+fn publish(source: &Path, target: &Path, replace: bool) -> io::Result<()> {
+    if replace {
+        fs::rename(source, target)
+    } else {
+        fs::hard_link(source, target)
+    }
 }
 
 #[cfg(test)]
@@ -192,6 +221,29 @@ mod tests {
         assert_eq!(fs::read(original).unwrap(), b"original");
         assert_eq!(fs::read(output).unwrap(), b"result");
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 2);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn failed_store_replacement_preserves_all_existing_keys() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let root = TestDir::new();
+        let store = root.0.join("subtitle-tools.json");
+        let previous = br#"{"settings":{"theme":"dark"},"history":[]}"#;
+        let next = br#"{"settings":{"theme":"dark"},"history":[],"tool-presets-v1":{"schemaVersion":1,"presets":[]}}"#;
+        replace_local_store(&store, previous).unwrap();
+        let lock = OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&store)
+            .unwrap();
+        assert!(replace_local_store(&store, next).is_err());
+        drop(lock);
+        assert_eq!(fs::read(&store).unwrap(), previous);
+        assert_eq!(fs::read_dir(&root.0).unwrap().count(), 1);
+        replace_local_store(&store, next).unwrap();
+        assert_eq!(fs::read(&store).unwrap(), next);
     }
 
     #[test]

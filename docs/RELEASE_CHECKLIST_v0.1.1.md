@@ -12,12 +12,12 @@
 
 | 检查 | 0.1.0 基线 | 0.1.1 回归 |
 | --- | --- | --- |
-| `npm ci` | PASS（7.61 s） | PASS（沿用本轮锁文件安装，版本更新未改变依赖） |
+| `npm ci` | PASS（7.61 s） | NOT_RUN（版本更新未改变依赖，沿用基线安装） |
 | `npm run lint` | PASS（1.98 s） | PASS（1.54 s） |
 | `npm run typecheck` | PASS（1.86 s） | PASS（1.78 s） |
 | `npm test` | PASS（122 项，5 个文件，0.86 s） | PASS（128 项，5 个文件） |
 | `npm run build` | PASS（2.58 s） | PASS（2.49 s） |
-| `npx playwright install chromium` | PASS（1.23 s） | PASS（沿用本轮安装的 Chromium） |
+| `npx playwright install chromium` | PASS（1.23 s） | NOT_RUN（沿用基线安装的 Chromium） |
 | `npm run test:e2e` | PASS（9 项，9.62 s） | PASS（12 项，10.73 s） |
 | `cargo test --locked --manifest-path src-tauri/Cargo.toml` | PASS（10 项，15.03 s） | PASS（11 项，0.44 s） |
 | `cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | PASS（2.83 s） | PASS（3.78 s） |
@@ -49,16 +49,20 @@
 | Explorer 拖放 | PASS | 在专用 Explorer 窗口通过实际鼠标拖入单文件、再拖入选中的两份文件，核对 Shell 顺序。重复拖入未重复入队，不支持的扩展名有诊断，WebView 停留在首页。 |
 | 中文、空格、括号、emoji 路径 | PASS | 通过安装版实际导入和导出包含上述字符的目录与文件名，输出保留毫秒时间、多行正文、emoji 与组合字符。 |
 | 长文件名路径 | PASS | 安装版导入 101 字符文件名并成功批量导出。另有 Rust 长路径回归，超过传统 MAX_PATH 的系统对话框行为单列。 |
-| 不同盘符与超长路径 | NOT_RUN | 在测试机另一盘符建立路径，测试跨盘导出。启用长路径的测试机上另测超过传统 MAX_PATH 的目录层级，记录系统和应用实际行为。 |
+| 不同盘符 | PASS | 通过安装版原生对话框从一个本地盘符导入合成字幕，处理并导出到另一个盘符。 |
+| 超过传统 MAX_PATH 的对话框路径 | NOT_RUN | 在支持长路径的 Windows 环境建立超长目录，从系统选择器分别导入和导出。Rust 长路径回归不替代系统对话框行为。 |
 | 原生另存为与原始字节保护 | PASS | 运行安装版 Worker，看到处理前后预览，经系统另存为生成 SRT，验证字幕正文和毫秒时间，使用 SHA-256 确认原文件字节未变。 |
 | 目录授权、取消、重启后重新授权与换目录 | PASS | 在设置用原生对话框选择 A 并保存。重启时设置仍在，导出重新提示，取消无产物且结果保留。重试选择 B，仅出现一次授权对话框，两个文件都写入 B。 |
 | 已有文件、大小写碰撞与批量保存 | PASS | 在 B 预置大小写不同的同名文件，确认两项都成功写入。原有目标、两个原始字幕的 SHA-256 未变。 |
 | ACL 拒绝写入与换目录重试 | PASS | 专用合成目录对当前用户拒绝创建文件。安装版导出显示失败与结果保留提示，目录无半写入文件。改选可写目录，无须重新处理即可导出两项。测试后恢复该目录 ACL。 |
-| 文件被占用 | BLOCKED | 对专用合成 SRT 持有独占文件锁，系统选择器保持打开，自动化未能取得占用提示并确认取消后的队列状态。人工在相同条件下检查系统提示和取消后的队列，再解锁并重新选择。 |
-| 空文件、接近 32 MiB、超限文件、批量上限 | NOT_RUN | 混合合法文件和 0、32 MiB 边界及超限的合成文件，检查报错、内存压力和其余文件仍可处理。分次添加，验证 100 文件和 128 MiB 队列限制。 |
+| Explorer 拖入被占用文件 | PASS | 持有合成 SRT 的独占文件锁，从 Explorer 拖入。程序显示 Windows 文件占用诊断，之前的合法文件保留。 |
+| 文件选择器打开被占用文件 | BLOCKED | 系统选择器保持打开，脚本未能获取系统提示和确认取消后的队列。可通过同样的独占锁场景人工确认。 |
+| 原生空文件、32 MiB 边界和超限文件 | PASS | 从 Explorer 拖入空 SRT 和 32 MiB + 1 字节的合成文件。超限在导入时拒绝，空文件在处理时独立报错，其他文件可生成结果。实际 Windows 文件选择器可将恰好 32 MiB 的文件加入队列。 |
+| 原生批量上限的完整桌面流程 | NOT_RUN | 分次添加合成文件，验证 100 文件和 128 MiB 队列限制。自动测试已覆盖读取与队列预算。 |
 | 安装版设置重启与深色主题 | PASS | 安装版使用设置页保存深色及默认目录，关闭进程再启动，读取后端 Store 确认两个偏好仍在，目录仍需重新授权。 |
 | 安装版历史持久化与内容边界 | PASS | 实际安装版处理并重启后核对 Store，历史摘要仍在，合成字幕正文未持久化。 |
-| 安装版三种主题与窗口布局 | NOT_RUN | 安装版在 900 × 620 和 1200 × 800 下分别验收浅色、深色、系统主题，检查按钮、表单、预览和导出。Chromium 回归覆盖三种主题。 |
+| 100% DPI 浅色预览布局 | PASS | 查看安装版在 1200 × 800 和 900 × 620 窗口尺寸的实际截图。两栏时间与正文均可见，较窄窗口仍可垂直滚动。 |
+| 100% DPI 深色与系统主题工作区 | PASS | 安装版在 1200 × 800 和 900 × 620 下可处理并显示导出操作。实际截图检查文件区和参数区。系统主题与本机 Windows 浅色偏好一致。 |
 | 125%、150%、200% DPI | NOT_RUN | 使用真实 Windows 显示缩放逐档验收，检查 900 × 620 和默认窗口在预览和对话框中的可达性。 |
 | Windows 10 安装、启动、卸载 | NOT_RUN | 在 Windows 10 x64 测试机或可交互虚拟机重复安装与端到端文件流程。 |
 | 干净 Windows、无 WebView2 的引导安装 | NOT_RUN | 在干净快照中确认缺少 WebView2 后，安装 NSIS、观察引导下载并完成首次启动，再卸载。现有主机已装运行时。 |
@@ -67,4 +71,4 @@
 
 - Windows GUI 覆盖按矩阵逐项判定。Rust 和 Chromium 的 PASS 与本机已有 WebView2 的 NSIS 冒烟只证明各自覆盖范围。
 - x64 安装器为 `src-tauri/target/release/bundle/nsis/Subtitle Tools_0.1.1_x64-setup.exe`，1,376,478 字节，SHA-256 为 `A37ADA60C77BF6BCE36771E46F7708919803293B7A80771A13C1407B8B27922F`。当前安装器未配置代码签名。
-- 尚需扩大 Windows 兼容性和 DPI 验收。UI Automation 记录保存在忽略的 `src-tauri/target/qa-v011/`。`run-0f7bad85/native-report.json` 为成功的完整已覆盖流程。`run-83efa80f/native-report.json` 留存单独占用输入步骤的等待超时。
+- 尚需扩大 Windows 兼容性和 DPI 验收。UI Automation 记录保存在忽略的 `src-tauri/target/qa-v011/`。`run-0f7bad85/native-report.json` 为安装版端到端流程。`run-9bef50c3/` 留存两种尺寸的实际截图和占用文件拖放记录。`run-aa5124dd/native-report.json` 记录原生文件大小边界。`run-7e9520f5/native-report.json` 记录跨盘导入和导出。`run-ffb7d4ce/` 留存两种尺寸的深色和系统主题截图。

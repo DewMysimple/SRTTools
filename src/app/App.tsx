@@ -23,7 +23,7 @@ function AppLayout() {
   useEffect(() => { main.current?.scrollTo({ top: 0 }); }, [location.pathname]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (busy || loading || event.altKey || event.metaKey) return;
+      if (busy || loading || event.altKey || event.metaKey || document.querySelector('dialog[open]')) return;
       if (event.ctrlKey && event.key.toLowerCase() === 'o') { event.preventDefault(); if (event.shiftKey) navigate('/batch'); void choose(); }
       if (event.ctrlKey && event.key.toLowerCase() === 'f') { const field = document.getElementById('tool-search') ?? document.getElementById('param-find'); if (field) { event.preventDefault(); field.focus(); } }
     };
