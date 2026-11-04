@@ -22,6 +22,7 @@ async function desktopFolderMock(page: Page, scenario: 'stream' | 'cancel' | 'pi
         }) => {
           if (command === 'plugin:event|listen') return 1;
           if (command === 'plugin:event|unlisten') return null;
+          if (command === 'take_external_imports') return { files: [], rejected: 0, duplicates: 0 };
           if (command === 'get_local_value') return values[args.key!] ?? null;
           if (command === 'set_local_value') { values[args.key!] = args.value; return null; }
           if (command === 'select_files') return [first];

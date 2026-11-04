@@ -1,4 +1,4 @@
-# Shared UIA controls for feature and folder acceptance scenarios.
+﻿# Shared UIA controls for feature and folder acceptance scenarios.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $report.featureChecks = [ordered]@{}
 $originalHashes = [Collections.Generic.Dictionary[string,string]]::new()

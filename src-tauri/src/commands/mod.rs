@@ -1,5 +1,6 @@
-mod safe_files;
+pub mod explorer;
 pub mod folder_import;
+mod safe_files;
 pub use folder_import::FolderImports;
 
 use serde::Serialize;

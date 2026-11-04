@@ -155,6 +155,7 @@ test('desktop batch export reuses the canonical directory selected while authori
         invoke: async (command: string, args: { key?: string; value?: unknown; directory?: string; name?: string }) => {
           if (command === 'plugin:event|listen') return 1;
           if (command === 'plugin:event|unlisten') return null;
+          if (command === 'take_external_imports') return { files: [], rejected: 0, duplicates: 0 };
           if (command === 'get_local_value') return args.key === 'settings' ? { outputDirectory: preferred } : history;
           if (command === 'set_local_value') { history = args.value; return null; }
           if (command === 'select_files') {

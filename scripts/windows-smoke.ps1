@@ -2,8 +2,9 @@
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
   [string] $ExpectedVersion,
-  [ValidateSet('smoke', 'features', 'folder')][string] $Scenario = 'smoke',
-  [string] $NsisPath
+  [ValidateSet('smoke', 'features', 'folder', 'explorer')][string] $Scenario = 'smoke',
+  [string] $NsisPath,
+  [switch] $AllowUnavailableContextMenu
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +16,7 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
   if ($ExpectedVersion) { $arguments += @('-ExpectedVersion', $ExpectedVersion) }
   $arguments += @('-Scenario', $Scenario)
   if ($NsisPath) { $arguments += @('-NsisPath', $NsisPath) }
+  if ($AllowUnavailableContextMenu) { $arguments += '-AllowUnavailableContextMenu' }
   & (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') @arguments
   exit $LASTEXITCODE
 }
@@ -49,6 +51,7 @@ public static class SubtitleSmokeNative {
      object role = accessible.get_accRole(0);
     }
    } catch (COMException) {
+   } catch (InvalidCastException) {
    } finally {
     if (accessible != null && Marshal.IsComObject(accessible)) Marshal.ReleaseComObject(accessible);
    }
@@ -190,14 +193,20 @@ function Get-Control([string] $Name, $Type = $null) {
 }
 
 function Click-Control([string] $Name) {
-  $control = Get-Control $Name $types::Button
+  $control = Wait-Condition {
+    $candidate = Find-Control $Name $types::Button
+    if ($candidate -and $candidate.Current.IsEnabled) { $candidate }
+  } ("Application action did not become ready: " + $Name)
   $report.lastControl = [ordered]@{
     name = $Name
     enabled = $control.Current.IsEnabled
     offscreen = $control.Current.IsOffscreen
   }
   Assert-Condition $control.Current.IsEnabled 'Application action was disabled.'
-  $control.GetCurrentPattern($invoke).Invoke()
+  $action = $null
+  if ($control.TryGetCurrentPattern($invoke, [ref]$action)) { $action.Invoke() }
+  elseif ($control.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$action)) { $action.Toggle() }
+  else { throw 'Application button did not expose a supported UI Automation action.' }
 }
 
 function Find-Dialog {
@@ -238,8 +247,8 @@ function Get-ApplicationWindow($TestProcess) {
   Wait-Condition {
     [SubtitleSmokeNative]::IsWindowVisible($handle) -and ![SubtitleSmokeNative]::IsIconic($handle)
   } 'The test application window could not be shown.' | Out-Null
-  [SubtitleSmokeNative]::ActivateAccessibility($handle)
   Wait-Condition {
+    [SubtitleSmokeNative]::ActivateAccessibility($handle)
     $window.FindFirst($scope::Descendants, (Condition $element::NameProperty '让字幕处理，简单一点。'))
   } 'Application home was not available.' | Out-Null
   $window
@@ -358,6 +367,8 @@ try {
     . (Join-Path $PSScriptRoot 'windows-feature-steps.ps1')
   } elseif ($Scenario -eq 'folder') {
     . (Join-Path $PSScriptRoot 'windows-folder-steps.ps1')
+  } elseif ($Scenario -eq 'explorer') {
+    . (Join-Path $PSScriptRoot 'windows-explorer-steps.ps1')
   } else {
   $stage = 'import'
   Click-Control '选择文件'
@@ -444,7 +455,7 @@ try {
     }
   }
   if (!$report.failureStage -and $report.originalPreserved -and $report.shutdown -and $report.storeRestored) {
-    if ($report.cleanupComplete) { $report.status = 'PASS' }
+    if ($report.cleanupComplete) { $report.status = if ($report.contextMenuStatus -eq 'BLOCKED') { 'PARTIAL' } else { 'PASS' } }
     else {
       $report.failureStage = 'cleanup'
       $report.failureReason = 'The owned smoke workspace could not be completely removed.'

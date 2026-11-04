@@ -4,7 +4,19 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let external = commands::explorer::ExternalImports::default();
+    external.enqueue(
+        &std::env::args().collect::<Vec<_>>(),
+        &std::env::current_dir().unwrap_or_default(),
+    );
+    let builder = tauri::Builder::default();
+    // Must be the first plugin: second processes forward arguments before creating a WebView.
+    #[cfg(windows)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(
+        commands::explorer::forward,
+    ));
+    builder
+        .manage(external)
         .manage(commands::FileAccess::default())
         .manage(commands::FolderImports::default())
         .plugin(tauri_plugin_dialog::init())
@@ -34,6 +46,9 @@ pub fn run() {
             commands::select_files,
             commands::folder_import::select_import_folder,
             commands::folder_import::cancel_folder_import,
+            commands::explorer::get_explorer_integration,
+            commands::explorer::set_explorer_integration,
+            commands::explorer::take_external_imports,
             commands::read_dropped_files,
             commands::select_directory,
             commands::save_output,
