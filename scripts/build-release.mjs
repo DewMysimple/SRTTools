@@ -8,6 +8,7 @@ import {
   validateWindowsQaReport,
 } from './release-common.mjs';
 import { cleanOutputs } from './clean-outputs.mjs';
+import { checkVersions } from './check-versions.mjs';
 
 const args = process.argv.slice(2);
 const known = ['--allow-dirty', '--check', '--simulate-failure=before-publish'];
@@ -26,21 +27,16 @@ async function preflight() {
   if (await run('git', ['diff', '--name-only', '--diff-filter=U'], { capture: true })) throw new Error('Resolve Git conflicts before building.');
   const status = await run('git', ['status', '--porcelain'], { capture: true });
   if (status && !args.includes('--allow-dirty')) throw new Error('Working tree has changes. Commit them first, or explicitly use --allow-dirty for development acceptance.');
-  const configuration = JSON.parse(await fs.readFile(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8'));
-  const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
-  const lock = JSON.parse(await fs.readFile(path.join(root, 'package-lock.json'), 'utf8'));
   const metadata = JSON.parse(await run('cargo', ['metadata', '--locked', '--no-deps', '--format-version', '1', '--manifest-path', 'src-tauri/Cargo.toml'], { capture: true }));
   const crate = metadata.packages.find(item => item.name === 'subtitle-tools');
-  if (!crate || [configuration.version, lock.version, lock.packages?.['']?.version, crate.version].some(value => value !== pkg.version)) {
-    throw new Error('npm, lockfiles, Tauri and Cargo versions must agree before release.');
-  }
+  if (!crate) throw new Error('Cargo metadata did not contain the application package.');
+  const { version, configuration } = await checkVersions(root, { cargoVersion: crate.version });
   const target = await controlledPath(root, metadata.target_directory);
   if (path.resolve(target).toLowerCase() !== path.join(root, 'src-tauri/target').toLowerCase()) {
     throw new Error('Release scripts require the project-local src-tauri/target. Shared or alternate Cargo target directories are preserved.');
   }
   if (configuration.bundle?.externalBin?.length) throw new Error('This project now declares sidecars. Add their verified runtime inventory before packaging.');
   const resources = await releaseResources(root, configuration.bundle?.resources);
-  const version = pkg.version;
   const binaries = crate.targets.filter(item => item.kind.includes('bin'));
   if (binaries.length !== 1 || binaries[0].name !== 'subtitle-tools') throw new Error('Unexpected executable target; review packaging.');
   await npm(['ls', '--depth=0'], { capture: true });

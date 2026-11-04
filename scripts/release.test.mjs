@@ -9,6 +9,7 @@ import {
   validateWindowsQaReport,
 } from './release-common.mjs';
 import { cleanOutputs, planCleanup } from './clean-outputs.mjs';
+import { checkVersions } from './check-versions.mjs';
 
 async function fixture(t) {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'srttools-release-test-')));
@@ -38,6 +39,44 @@ const workflowChecks = {
   nativePresetJsonExchange: true, invalidPresetPreservesStore: true, nestedDirectoryWrite: true,
   multiRootZipManifest: true, sourceOverlapRejected: true, failedWriteRetry: true, cancelRetry: true,
 };
+
+test('shared version gate rejects drift in every npm, Tauri and Cargo manifest', async t => {
+  const root = await fixture(t);
+  await fs.mkdir(path.join(root, 'src-tauri'));
+  const contents = {
+    'package.json': JSON.stringify({ name: 'subtitle-tools', version: '0.4.0' }),
+    'package-lock.json': JSON.stringify({ version: '0.4.0', packages: { '': { version: '0.4.0' } } }),
+    'src-tauri/tauri.conf.json': JSON.stringify({ version: '0.4.0' }),
+    'src-tauri/Cargo.toml': '[package]\nname = "subtitle-tools"\nversion = "0.4.0"\n[dependencies]\nserde = "1"\n',
+    'src-tauri/Cargo.lock': 'version = 4\n[[package]]\nname = "subtitle-tools"\nversion = "0.4.0"\n[[package]]\nname = "serde"\nversion = "1.0.0"\n',
+  };
+  for (const [file, text] of Object.entries(contents)) await fs.writeFile(path.join(root, file), text);
+  assert.equal((await checkVersions(root, { cargoVersion: '0.4.0' })).rows.length, 7);
+  for (const [file, text] of Object.entries(contents)) {
+    await fs.writeFile(path.join(root, file), text.replace('0.4.0', '0.3.0'));
+    await assert.rejects(checkVersions(root), /version drift/u, file);
+    await fs.writeFile(path.join(root, file), text);
+  }
+  await fs.writeFile(path.join(root, 'package-lock.json'), JSON.stringify({ version: '0.4.0', packages: { '': { version: '0.3.0' } } }));
+  await assert.rejects(checkVersions(root), /packages\[""\]=0\.3\.0/u);
+  await fs.writeFile(path.join(root, 'package-lock.json'), contents['package-lock.json']);
+  await assert.rejects(checkVersions(root, { cargoVersion: '0.3.0' }), /cargo metadata/u);
+  assert.equal((await checkVersions(root)).version, '0.4.0');
+});
+
+test('version gate rejects absent or ambiguous application lock entries', async t => {
+  const root = await fixture(t);
+  await fs.mkdir(path.join(root, 'src-tauri'));
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'subtitle-tools', version: '0.4.0' }));
+  await fs.writeFile(path.join(root, 'package-lock.json'), JSON.stringify({ version: '0.4.0', packages: { '': { version: '0.4.0' } } }));
+  await fs.writeFile(path.join(root, 'src-tauri/tauri.conf.json'), JSON.stringify({ version: '0.4.0' }));
+  await fs.writeFile(path.join(root, 'src-tauri/Cargo.toml'), '[package]\nname = "subtitle-tools"\nversion = "0.4.0"\n');
+  const entry = '[[package]]\nname = "subtitle-tools"\nversion = "0.4.0"\n';
+  for (const text of ['', entry + entry]) {
+    await fs.writeFile(path.join(root, 'src-tauri/Cargo.lock'), text);
+    await assert.rejects(checkVersions(root), /exactly one application package/u);
+  }
+});
 
 test('Windows QA gates require every unique check and confirmed fixture cleanup', () => {
   for (const kind of ['safety', 'state']) {

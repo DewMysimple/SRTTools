@@ -4,7 +4,7 @@ Subtitle Tools 0.4.0 是极简、轻量的 Windows 本地字幕工具箱。使�
 
 操作流程：**选择文件 → 选择工具 → 设置参数 → 预览 → 确认导出**。默认生成 `原文件名_processed.ext`，不会覆盖原文件。
 
-![浏览器预览首页（0.3.0 界面参考）](docs/screenshots/home.png)
+![v0.4.0 浏览器预览首页](docs/screenshots/home-v040.png)
 
 ## 已实现
 
@@ -34,6 +34,12 @@ Subtitle Tools 0.4.0 是极简、轻量的 Windows 本地字幕工具箱。使�
 
 “保存流程”只保存参数，不保存字幕和授权。工具预设可快照复制到某一步。跨设备分享使用“导出预设 JSON”，个人查找/替换文字会包含在配置中，导出前需明确确认。完整可导入示例见 [SRTTools-Presets.json](docs/examples/SRTTools-Presets.json)。ASS/SSA/VTT 混合步骤默认拒绝，需明确同意布局损失才规范化为 SRT；仅简繁的流程保留原布局。容量和安全边界见 [功能文档](docs/FEATURES.md)。
 
+![v0.4.0 四步处理流程配置](docs/screenshots/workflow-v040.png)
+
+![v0.4.0 真实处理结果与差异预览](docs/screenshots/workflow-preview-v040.png)
+
+本工具不包含视频播放器、视频时间轴或轨道编辑。
+
 ## 运行环境
 
 - Windows 10 / 11，x64，Microsoft Edge WebView2 Runtime。
@@ -56,6 +62,7 @@ npm run tauri -- dev
 
 ```powershell
 npm run lint
+npm run check:versions
 npm run typecheck
 npm test
 npm run build
@@ -151,6 +158,12 @@ release-output/    最新一套本地交付物（Git 忽略）
 
 **处理容量？** 单输入文件最多 32 MiB；队列最多 100 个文件、总计 128 MiB；单次原生输出最多 256 MiB。预览每页 20 条。请将更大的工作拆成多批。
 
-**尚未实现？** 关键词过滤、独立字幕时间匹配、自定义可保存流程、专用每行字数截断工具尚未开放。自动换行是字符规则，不做语义分句。软件不包含视频播放、时间轴或轨道编辑。
+**尚未实现？** 关键词过滤、独立字幕时间匹配、专用每行字数截断工具尚未开放。自定义可保存流程已在批量页提供。自动换行是字符规则，不做语义分句。软件不包含视频播放、时间轴或轨道编辑。
 
-0.3.0 当前及历史验收、产物校验值与剩余 Windows 验证范围见[测试记录](docs/TESTING.md)、[主线迭代审阅](docs/REVIEW_v0.2.0_to_v0.3.0.md)和 [v0.1.1 发布检查表](docs/RELEASE_CHECKLIST_v0.1.1.md)，版本变更见[更新记录](docs/CHANGELOG.md)。
+Windows 11、100% DPI、已安装 WebView2 是当前实测环境；Windows 10、125%/150%/200% DPI、无 WebView2 干净系统及超长路径系统选择器尚未验收。安装包未签名。完整当前结果与人工补测步骤见[收尾报告](docs/RELEASE_CLOSURE_v0.4.0.md)，历次验证见[测试记录](docs/TESTING.md)，版本变更见[更新记录](docs/CHANGELOG.md)。
+
+## 下载与项目授权
+
+本轮准备本地候选包，路径为 `release-output/SRTTools-Setup.exe` 和 `release-output/SRTTools.zip`；安装版供当前用户安装，便携版解压后运行 `SRTTools/subtitle-tools.exe`。GitHub Releases 尚无公开下载版本，源码用户可按上文 Windows 构建步骤生成。对外 tag、Release 和附件上传需维护者另行确认；发布文案见[v0.4.0 发布说明草稿](docs/RELEASE_NOTES_v0.4.0.md)。
+
+项目 LICENSE 尚未选择，用户已决定将其保留为公开发布前待决定事项。第三方依赖声明随安装包和 ZIP 分发，见[THIRD_PARTY_NOTICES](docs/THIRD_PARTY_NOTICES.txt)。

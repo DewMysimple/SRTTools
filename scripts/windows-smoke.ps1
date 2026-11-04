@@ -2,7 +2,7 @@
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
   [string] $ExpectedVersion,
-  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow')][string] $Scenario = 'smoke',
+  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure')][string] $Scenario = 'smoke',
   [string] $NsisPath,
   [switch] $AllowUnavailableContextMenu,
   [switch] $PreserveExistingStore,
@@ -406,6 +406,8 @@ try {
     . (Join-Path $PSScriptRoot 'windows-explorer-steps.ps1')
   } elseif ($Scenario -eq 'workflow') {
     . (Join-Path $PSScriptRoot 'windows-workflow-steps.ps1')
+  } elseif ($Scenario -eq 'closure') {
+    . (Join-Path $PSScriptRoot 'windows-closure-steps.ps1')
   } else {
   $stage = 'import'
   Click-Control '选择文件'
