@@ -2,6 +2,26 @@
 
 v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [发布检查表](RELEASE_CHECKLIST_v0.1.1.md)。回归夹具位于 [examples/回归](../examples/回归)，包含 UTF-8 BOM、GBK CRLF、Unicode 文件名、重复编号和损坏时间行。Playwright 将本次运行的截图留在 `test-results/`。
 
+## v0.3.0 本轮验证（2026-11-04，最终发布验收中）
+
+合并前 `origin/main=123eb499336f4f571c4ecf41f5fbe47da4223640`，开发分支与快进目标 `f5c92e6afc056bee0dbeae052caa15f0bf70b226`，推送后已核实主线包含 v0.2.0。阶段提交为 `a67fab9`（发布）、`d2a68a1`（简繁）、`fd614b8`（严格编码）、`81e5cb4`（目录导入）。当前版本清单均为 0.3.0。环境仍为本机 Win11 Pro 25H2 26200.9711、x64、96 DPI / 100%、WebView2 156.0.4314.58、Node24.16/npm12.0.1、Rust1.97 MSVC。
+
+| 阶段检查 | 实际结果 |
+| --- | --- |
+| 合并后原有质量门槛 | PASS：npm ci、lint/typecheck、157 Vitest、build、25 Chromium、13 Rust、Clippy；原生安装版另 17 项 PASS |
+| Gate 1 发布与清理 | PASS：真实 `release:win -- --allow-dirty`、`release:verify`、ZIP 解压后导入处理导出、哈希清单，旧 3 个 NSIS 包清理；开发验收记录 dirty=true，不充当最终 0.3 安装包 |
+| 发布安全回归 | PASS：12 tests，未知文件/junction/路径逃逸、可回滚替换、双失败唯一副本、残留/活动锁、源码指纹、许可资源、重复清理 |
+| Gate 2 简繁 | PASS：27 新增 core/Worker、3 新增 UI，原文布局覆盖六种格式，完整当时 184 Vitest / 28 Chromium |
+| Gate 3 严格旧编码 | PASS：完整当时 208 Vitest / 31 Chromium；全标量 1,112,045 往返、19 aliases 拒绝；Firefox157 全 31 tests PASS；原生 7 项字节/布局/预设重启 PASS |
+| Gate 4 目录 | PASS：4 队列回归、9 目录合同/视觉/键盘、原生 13 项，真实读取中取消后重试；24 Rust 已分阶段通过，Clippy PASS |
+| Gate 5 对比与批量预设 | PASS：228 Vitest（含新增核心/Worker），独立对比 10 E2E、批量预设 3 E2E，原有 9 spec 共 53 Chromium PASS（44.8 秒） |
+| Gate 5 Explorer 与桌面交互 | PARTIAL：14 项原生 PASS（注册/ACL/冷暖/忙碌/无效输入/ZIP/启停/更新/路径/卸载/物理拖放/对比/批量），实际菜单显示与点击导入 BLOCKED，默认关闭的实验入口；原 Store/注册表恢复 true |
+| Gate 6 最终发布重复构建/故障保护/原生全回归 | 待当前最终验收；结果和最后产物 SHA 将在完成后写入本节 |
+
+原生 Gate3/Gate4 每项内容、合成文件数量、构建 SHA 与校验值见[逐阶段审阅](REVIEW_v0.2.0_to_v0.3.0.md)。目录 E2E 使用模拟 Tauri 合同，不能替代 Windows 真对话框；独立对比和编码 E2E 均运行真实 Worker。曾发现且已回归修复：Node 后台 UIA 隐藏/前台限制、JS Unicode 扩张误去重、损坏/未确认编码输入被错误显示为删除。初次失败记录保留在审阅摘要，不伪称这些尝试 PASS。
+
+Windows10、125%/150%/200%DPI、无 WebView2 干净系统、超过 MAX_PATH 的系统对话框仍无对应可交互环境，标为 NOT_RUN；Rust 超长路径、当前 Win11 实际 Unicode 路径与限额测试独立列证据。安装包未签名，不将这些缺口改写为兼容性通过。
+
 ## v0.2.0 实际执行结果（2026-11-04）
 
 前端验收对应 `b9cecf8a140ead4dced20f6caec07fb9fdb501d7`。最终 Rust 回归与安装包对应 `581aaae8c26e2ae39c74d88e2ef6ffb671a9cdfa`，两次提交之间的产品代码变化只在 Rust Store。环境为 Windows 11 专业版 25H2（26200.9711）、x64、100% DPI、WebView2 156.0.4314.58、Node.js 24.16.0、npm 12.0.1 与 Rust 1.97.0 MSVC。

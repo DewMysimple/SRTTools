@@ -78,3 +78,19 @@ Gate 3 原生验收 PASS（2026-11-04 14:03:57，Win 11 26200.9711 / WebView2 15
 独立审阅发现 JavaScript `.toLowerCase()` 将两个真实 Windows 文件 `İ.srt` 与 `i`+U+0307`.srt` 合并的问题，暂停了该构建验收。修复为保留完整非 ASCII 实际拼写，Unicode 大小写别名由原生 canonical 路径和 Windows ordinal 比较处理。真实 Windows 探针确认 `Σ/σ`、`Ä/ä`、`SS/ss`、`I/i` 返回相同真实 canonical 名，而 `İ` 与 `i`+U+0307、`ß` 与 `SS` 可分别创建且保持不同。前端新增回归为 4 PASS，修复后类型检查和 lint PASS；原生矩阵将从头重跑，不沿用旧构建的部分结果。
 
 修复后原生矩阵从头重跑，13/13 PASS，含空目录、默认不递归、递归、Unicode 真正不同文件/真实大小写别名、不同目录同名、junction 外跳/环、既有处理与 ZIP、锁输入、32 MiB 超限、格式过滤、深度 5、队列 100、目录项 2,000、拒绝目录及取消恢复。取消测试使用 3×32 MiB 的真实读取批次，在读取中取消，只有 1 份完整文件加入，2 份未加入；此前有效队列保留，随后另一目录导入成功。126 个合成源文件哈希不变，原 Store 恢复、正常退出和本次测试工作目录清理为 true。原始摘要当时位于 `src-tauri/target/gate4-native-folder.json`。永久 canonical 回归已加，Rust 合计 24 项（新增项与严格 Clippy 均通过）；前端 4 队列回归及 9 个目录合同/浅深色/尺寸/键盘用例通过，视觉截图不冒充原生测试。
+
+## 可视对比、批量预设与可选系统入口（Gate 5）
+
+独立对比显式不信任输入间 cue ID，复用原引擎和预算；容差只影响已配对行的时间变化分类，原列表位置诊断/summary 不变，JSON 新增无正文 `visualComparison`。UI 明确区分两种摘要，第一份/第二份文件标签、仅变化、分页和逐字高亮均复用。测试发现结构损坏被错当全部删除，已守卫解析 error 和未确认编码：逻辑比较 `unavailable`，保留原诊断报告；合法空文档仍允许真实增删。
+
+完整当时 228 Vitest，独立对比 10 项真实 Worker E2E、批量预设 3 项 E2E PASS；统一 0.3.0 后 9 个 spec 的 53 项 Chromium 全 PASS（44.8 秒）。覆盖相同字幕、增删/重排/编号/重复歧义、容差、emoji/组合字符、5,000 条长正文预算回退、JSON/界面摘要一致、分页筛选后导出字节不变；批量与独立页预设重载/更新/跨工具隔离、单文件/ZIP 字节一致、编码变更失效、处理锁定和失败保参。
+
+Explorer 用官方 single-instance 和具体路径 pending 队列，设置默认关闭、仅六种扩展的 HKCU owner/path 专属键。独立安全审阅发现 command 子键预检 `.ok()` 吞 AccessDenied 导致备份不完整风险，已改仅 NotFound 映射缺失，其余读取/枚举错误在写入前返回；真实 ACL 故障下六键未变化。fresh 安装不注册、显式登记、直接带引号命令与 Shell 查询均有本机证据。
+
+本机内置 Administrator / session 1 / EnableLUA=0；32/64 位与 Explorer SID 一致。实际物理 Shift+右键的传统菜单读取到约 30 项，但没有本应用项，`AssocQueryStringW` 查找返回成功且 HKCR 合并可见。故显示与菜单点击导入标为 **BLOCKED**，不是 PASS。官方 [关联数组](https://learn.microsoft.com/en-us/windows/win32/shell/fa-associationarray) 支持现注册位置；[HKCR 合并规则](https://learn.microsoft.com/en-us/windows/win32/sysinfo/merged-view-of-hkey-classes-root) 对管理员/UAC 关闭的说明限于 COM 配置，不能据此证明静态菜单缺失根因。保持实验性/默认关闭，登记状态不声称可见，不更改 UAC、默认关联或机器级设置。任务书 §9 明确允许此独立 P1 在不能安全实证时降级；其余 CLI 转发、更新/卸载和桌面流程继续分项验收。
+
+早先两处失败 feature driver 残留的 `target/windows-smoke-*` 经核对无活跃进程、reparse 或未知顶层项，改用固定文件 inventory、长度/mtime 复查后逐文件删除，再仅删空目录。53 个文件、6,065,982 bytes 已实际清除；此前自动审批对宽泛递归删除的拒绝没有被改工具等价重试。
+
+0.3.0 最终 Gate5 原生报告为 **PARTIAL**：14 个分项 PASS、菜单显示 1 项 BLOCKED，整体不写全 PASS。其余项目包含 CLI 冷启动双 Unicode、单实例暖转发保队列、3×32 MiB 真正读取忙碌时延后消费、目录/移动/超限/格式拒绝、实际 ZIP、禁用/未知 owner、同路径更新保留 opt-in、移动路径修复与另一安装卸载保护、自有卸载保护、Explorer 单/多物理拖放、WebView2 独立对比左右/仅变化/真实无正文 JSON 摘要一致、批量预设重启及单输出/实际双 entry ZIP。最终加强了三份 CLI ZIP 与来源完整 bytes、batch ZIP 与单文件参考完整 bytes 的断言，9 个源文件哈希不变；原 Store/注册表（含 DACL）恢复、正常退出和当前测试目录清理均 true。报告当时为 `src-tauri/target/gate5-native-explorer.json`，首次 15:03:47 后同产物加强重验，原始 EXE `F47B50B611BD84399E11FE4381E89EFA909A5CB660094E0DD3CE0794EAC97814`、NSIS `2C4B0C35052737F4DB1B5F825AE55D1DD0CD4155B8611819DB7E5DAFF63333B9`。Tauri NSIS 实际安装的 payload EXE 为 `72D96D91721E720D9D84DDC7C45D31ED3D793383A54ED7C24E9E767316C11D7F`，版本同为 0.3.0，独立记录，不冒称其与便携 EXE 字节相同。
+
+旧 `target/qa-v011` 的复用部分已提炼为 tracked Windows 驱动，并由新版本真实验收。保存精简证据后，核对无活跃进程、reparse、Git 目录及未知顶层项，以冻结文件清单逐文件删除，再仅删空目录；实际清除 4,689 个文件、368,053,365 bytes，目录不存在。源码、正式夹具、应用数据、Git 历史和编译缓存均保留。
