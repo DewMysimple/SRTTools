@@ -7,3 +7,4 @@ export * from './text';
 export * from './validate';
 export * from './merge';
 export * from './process';
+export * from './workflow';

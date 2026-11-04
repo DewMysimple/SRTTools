@@ -10,6 +10,9 @@ import { validateFileNamePattern } from '../services/settings-service';
 import { convertChineseSubtitle } from '../core/chinese-subtitle';
 import type { SubtitleBodySpan } from '../core/parser';
 import { buildSubtitleDiff } from '../core/diff/subtitle-diff';
+import { analyzeWorkflow, executeWorkflow, workflowDefinitionSchema, WorkflowExecutionError, type WorkflowStepProgress } from '../core/workflow';
+import { convertChineseText } from '../core/chinese';
+import { rewriteSubtitleBodies } from '../core/chinese-subtitle';
 
 interface ImportedDocument {
   document: SubtitleDocument;
@@ -199,6 +202,49 @@ function executeFile(request: ProcessingRequest, task: ProcessedTask): Processed
   return { ...task, status: 'success' };
 }
 
+function executeWorkflowFile(request: ProcessingRequest, task: ProcessedTask, context: { signal?: AbortSignal; onStepProgress?: (progress: WorkflowStepProgress) => void }): ProcessedTask {
+  const checked = workflowDefinitionSchema.safeParse(request.workflow);
+  if (!checked.success) throw new SubtitleError('INVALID_WORKFLOW', `流程配置无效：${checked.error.issues[0]?.message ?? '请检查步骤和参数。'}`);
+  const definition = checked.data;
+  const file = request.files[0];
+  const analysis = analyzeWorkflow(definition, [file]);
+  const fileAnalysis = analysis.files[0];
+  if (!analysis.executable || !fileAnalysis.applicable) throw new SubtitleError('INCOMPATIBLE_WORKFLOW', fileAnalysis.reason ?? analysis.issues[0]?.message ?? '此流程不适用于当前文件。');
+  const input = readDocument(file, request.options, fileAnalysis.layout === 'source');
+  task.document = input.document;
+  task.diagnostics = input.diagnostics;
+  task.workflow = { stepSummaries: [] };
+  assertCanExport(input, 'workflow');
+  const result = executeWorkflow(input.document, definition, context);
+  task.workflow.stepSummaries = result.stepSummaries;
+  const inputIndex = request.options.fileIndexes?.[file.id] ?? 1;
+  if (fileAnalysis.layout === 'source') {
+    const enabled = definition.steps.filter(step => step.enabled);
+    const output = rewriteSubtitleBodies(input.sourceText!, { document: input.document, diagnostics: input.diagnostics, bodySpans: input.bodySpans }, text => {
+      for (const step of enabled) text = convertChineseText(text, step.params.direction as 's2t' | 't2s');
+      return text;
+    });
+    if (output.document.cues.some((cue, index) => cue.text !== result.document.cues[index]?.text)) {
+      throw new SubtitleError('UNSAFE_LAYOUT', '流程原文布局写回与内存结果不一致，已停止导出。');
+    }
+    const name = outputName(file.name, input.document.format, request.options, inputIndex);
+    task.outputs = [{ name, text: output.text, bytes: encodeOutput(output.text, request.options.outputEncoding, name, output.document.cues), document: output.document }];
+    task.diagnostics = task.diagnostics.filter(diagnostic => diagnostic.code !== 'LOSSY_ASS' && diagnostic.code !== 'LOSSY_VTT');
+  } else {
+    const outputDocument = { ...result.document, format: fileAnalysis.outputFormat!, fileName: file.name.replace(/\.[^.]+$/u, `.${fileAnalysis.outputFormat}`) };
+    const serialized = serializeDocuments([outputDocument], request.options, inputIndex);
+    task.outputs = serialized.outputs;
+    task.diagnostics.push(...serialized.diagnostics);
+    const actual = task.outputs[0].document;
+    const implicitRenumberCount = actual?.cues.filter((cue, index) => cue.index !== result.document.cues[index]?.index).length ?? 0;
+    if (implicitRenumberCount) task.diagnostics.push({ severity: 'info', code: 'IMPLICIT_RENUMBER', message: `末端序列化自动连续编号，另有 ${implicitRenumberCount} 条编号变化；处理后预览已展示实际输出。` });
+    if (input.document.format !== outputDocument.format) task.diagnostics.push({ severity: 'warning', code: 'LOSSY_WORKFLOW', message: `${input.document.format.toUpperCase()} 已按你同意的策略规范化为 SRT，原样式、位置、控制标记及 cue 设置不保留。` });
+  }
+  task.diagnostics.push(...result.diagnostics);
+  task.summary = `流程完成：执行 ${analysis.enabledStepCount} 步，跳过 ${definition.steps.length - analysis.enabledStepCount} 步；输出 ${task.outputs[0].document?.cues.length ?? 0} 条字幕，结果尚未写入磁盘。`;
+  return { ...task, status: 'success' };
+}
+
 function executeCombined(request: ProcessingRequest, task: ProcessedTask): ProcessedTask {
   if (request.files.length < 2) throw new SubtitleError('INVALID_PARAMS', '请至少选择两个字幕文件。');
   if (request.operation !== 'merge' && request.files.length !== 2) throw new SubtitleError('INVALID_PARAMS', '双语合并和字幕对比需要恰好两个文件，请调整文件列表。');
@@ -274,7 +320,7 @@ function executeCombined(request: ProcessingRequest, task: ProcessedTask): Proce
 }
 
 /** Pure worker entry point, also used for meaningful integration tests without a browser. */
-export function executeProcessingRequest(request: ProcessingRequest): ProcessedTask {
+export function executeProcessingRequest(request: ProcessingRequest, context: { signal?: AbortSignal; onStepProgress?: (progress: WorkflowStepProgress) => void } = {}): ProcessedTask {
   if (!request.files[0]) throw new SubtitleError('INVALID_PARAMS', '请先选择字幕文件。');
   const task: ProcessedTask = {
     id: request.files[0].id,
@@ -287,15 +333,21 @@ export function executeProcessingRequest(request: ProcessingRequest): ProcessedT
     task.inputSize = request.files.reduce((sum, file) => sum + file.size, 0);
   }
   try {
-    return request.kind === 'combined' ? executeCombined(request, task) : executeFile(request, task);
+    return request.kind === 'combined' ? executeCombined(request, task)
+      : request.kind === 'workflow' ? executeWorkflowFile(request, task, context) : executeFile(request, task);
   } catch (error) {
+    if (error instanceof WorkflowExecutionError) {
+      task.workflow = { stepSummaries: error.stepSummaries };
+      task.diagnostics.push(...error.diagnostics);
+    }
+    const cancelled = error instanceof Error && error.name === 'AbortError';
     return {
       ...task,
-      status: 'failed',
+      status: cancelled ? 'cancelled' : 'failed',
       outputs: [],
-      summary: '处理失败，原文件未修改',
-      errorMessage: error instanceof Error ? error.message : '处理失败，请检查文件和参数。',
-      errorCode: error instanceof SubtitleError ? error.code : 'PROCESSING_FAILED',
+      summary: cancelled ? '处理已取消，未生成输出文件' : '处理失败，原文件未修改',
+      ...(cancelled ? {} : { errorMessage: error instanceof Error ? error.message : '处理失败，请检查文件和参数。' }),
+      errorCode: cancelled ? 'USER_CANCELLED' : error instanceof SubtitleError ? error.code : 'PROCESSING_FAILED',
     };
   }
 }

@@ -7,7 +7,9 @@ workerScope.onmessage = (event: MessageEvent<{ requestId: string; request: Proce
   const { requestId, request } = event.data;
   let reply: WorkerReply;
   try {
-    reply = { requestId, result: executeProcessingRequest(request) };
+    reply = { requestId, result: executeProcessingRequest(request, {
+      onStepProgress: progress => workerScope.postMessage({ requestId, progress } satisfies WorkerReply),
+    }) };
   } catch (error) {
     reply = { requestId, error: error instanceof Error ? error.message : '字幕处理失败。' };
   }

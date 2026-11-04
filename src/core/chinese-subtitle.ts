@@ -1,9 +1,9 @@
 import { convertChineseText, type ChineseDirection } from './chinese';
-import { SubtitleError, type SubtitleDocument } from './models';
+import { SubtitleError, type SubtitleCue, type SubtitleDocument } from './models';
 import { parseSubtitle, type SourceParseResult } from './parser';
 
 /** Rewrite only parser-confirmed body spans and re-check the same format before exposing an output. */
-export function convertChineseSubtitle(source: string, parsed: SourceParseResult, direction: ChineseDirection): { text: string; document: SubtitleDocument } {
+export function rewriteSubtitleBodies(source: string, parsed: SourceParseResult, transform: (text: string, cue: SubtitleCue, position: number) => string): { text: string; document: SubtitleDocument } {
   const spans = parsed.bodySpans;
   const input = parsed.document;
   if (!spans || spans.length !== input.cues.length || parsed.diagnostics.some(diagnostic => diagnostic.severity === 'error')) {
@@ -18,7 +18,7 @@ export function convertChineseSubtitle(source: string, parsed: SourceParseResult
     const original = span.csvValue ?? source.slice(span.start, span.end);
     let converted: string;
     try {
-      converted = convertChineseText(original, direction);
+      converted = transform(original, input.cues[position], position);
     } catch (error) {
       if (!(error instanceof SubtitleError)) throw error;
       throw new SubtitleError(error.code, `第 ${input.cues[position].index} 条字幕：${error.message}`);
@@ -46,4 +46,8 @@ export function convertChineseSubtitle(source: string, parsed: SourceParseResult
       cues: output.document.cues.map((cue, position) => ({ ...cue, id: input.cues[position].id })),
     },
   };
+}
+
+export function convertChineseSubtitle(source: string, parsed: SourceParseResult, direction: ChineseDirection): { text: string; document: SubtitleDocument } {
+  return rewriteSubtitleBodies(source, parsed, text => convertChineseText(text, direction));
 }

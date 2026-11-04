@@ -1,5 +1,8 @@
 import type { ParseDiagnostic, SubtitleDocument } from '../core';
 import type { ImportedFile } from './file-service';
+import { workflowDefinitionSchema, type WorkflowDefinition, type WorkflowStepProgress, type WorkflowStepSummary } from '../core/workflow';
+
+export const MAX_WORKER_DURATION_MS = 60_000;
 
 export interface ProcessingOptions {
   encoding?: string;
@@ -30,6 +33,7 @@ export interface ProcessedTask {
   comparisonUnavailable?: 'input-errors' | 'uncertain-encoding';
   diagnostics: ParseDiagnostic[];
   inputDiagnostics?: ParseDiagnostic[];
+  workflow?: { stepSummaries: WorkflowStepSummary[]; currentStep?: WorkflowStepProgress };
   outputs: ProcessedOutput[];
   summary: string;
   errorMessage?: string;
@@ -37,20 +41,22 @@ export interface ProcessedTask {
 }
 
 export interface ProcessingRequest {
-  kind: 'file' | 'combined';
+  kind: 'file' | 'combined' | 'workflow';
   files: ImportedFile[];
   operation: string;
   params: Record<string, unknown>;
   options: ProcessingOptions;
+  workflow?: WorkflowDefinition;
 }
 
 export interface WorkerReply {
   requestId: string;
   result?: ProcessedTask;
   error?: string;
+  progress?: WorkflowStepProgress;
 }
 
-type RequestRunner = (request: ProcessingRequest, signal?: AbortSignal) => Promise<ProcessedTask>;
+type RequestRunner = (request: ProcessingRequest, signal?: AbortSignal, onStepProgress?: (progress: WorkflowStepProgress) => void) => Promise<ProcessedTask>;
 
 export function initialTask(file: ImportedFile): ProcessedTask {
   return {
@@ -63,12 +69,17 @@ function abortError(): DOMException {
   return new DOMException('处理已取消。', 'AbortError');
 }
 
-export function runWorkerRequest(request: ProcessingRequest, signal?: AbortSignal): Promise<ProcessedTask> {
+export function runWorkerRequest(request: ProcessingRequest, signal?: AbortSignal, onStepProgress?: (progress: WorkflowStepProgress) => void): Promise<ProcessedTask> {
   if (signal?.aborted) return Promise.reject(abortError());
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/subtitle.worker.ts', import.meta.url), { type: 'module' });
     const requestId = globalThis.crypto.randomUUID();
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(Object.assign(new Error('此文件处理超过 60 秒，已停止当前任务。请缩短正则表达式、减少步骤或拆分文件后重试。'), { code: 'WORKER_TIMEOUT' }));
+    }, MAX_WORKER_DURATION_MS);
     const cleanup = () => {
+      clearTimeout(timeout);
       worker.terminate();
       signal?.removeEventListener('abort', onAbort);
     };
@@ -76,6 +87,7 @@ export function runWorkerRequest(request: ProcessingRequest, signal?: AbortSigna
     signal?.addEventListener('abort', onAbort, { once: true });
     worker.onmessage = (event: MessageEvent<WorkerReply>) => {
       if (event.data.requestId !== requestId) return;
+      if (event.data.progress) { onStepProgress?.(event.data.progress); return; }
       cleanup();
       if (event.data.result) resolve(event.data.result);
       else reject(new Error(event.data.error ?? '字幕处理失败，请重试。'));
@@ -89,11 +101,11 @@ export function runWorkerRequest(request: ProcessingRequest, signal?: AbortSigna
 }
 
 /** Sequential processing isolates failures and bounds the number of live workers to one. */
-export function createFileProcessor(runRequest: RequestRunner = runWorkerRequest) {
-  return async function processFiles(
-    files: readonly ImportedFile[], operation: string, params: Record<string, unknown>, options: ProcessingOptions,
-    onProgress?: (task: ProcessedTask) => void, signal?: AbortSignal,
-  ): Promise<ProcessedTask[]> {
+async function processQueue(
+  files: readonly ImportedFile[], operation: string, params: Record<string, unknown>, options: ProcessingOptions,
+  onProgress: ((task: ProcessedTask) => void) | undefined, signal: AbortSignal | undefined,
+  runRequest: RequestRunner, workflow?: WorkflowDefinition,
+): Promise<ProcessedTask[]> {
     const tasks = files.map(initialTask);
     const jobOptions = options.fileIndexes ? options : {
       ...options, fileIndexes: Object.fromEntries(files.map((file, index) => [file.id, index + 1])),
@@ -107,8 +119,16 @@ export function createFileProcessor(runRequest: RequestRunner = runWorkerRequest
         continue;
       }
       onProgress?.({ ...initial, status: 'processing', summary: '正在处理' });
+      const completedSteps: WorkflowStepSummary[] = [];
+      let currentStep: WorkflowStepProgress | undefined;
       try {
-        tasks[index] = await runRequest({ kind: 'file', files: [files[index]], operation, params, options: jobOptions }, signal);
+        tasks[index] = await runRequest({ kind: workflow ? 'workflow' : 'file', files: [files[index]], operation, params, options: jobOptions, ...(workflow ? { workflow } : {}) }, signal,
+          workflow ? progress => {
+            currentStep = progress;
+            if (progress.summary) completedSteps.push(progress.summary);
+            onProgress?.({ ...initial, status: 'processing', summary: `正在执行第 ${progress.stepIndex + 1} / ${progress.totalSteps} 步`,
+              workflow: { stepSummaries: [...completedSteps], currentStep: progress } });
+          } : undefined);
       } catch (error) {
         const cancelled = signal?.aborted || (error instanceof Error && error.name === 'AbortError');
         tasks[index] = {
@@ -116,15 +136,38 @@ export function createFileProcessor(runRequest: RequestRunner = runWorkerRequest
           status: cancelled ? 'cancelled' : 'failed',
           summary: cancelled ? '已取消，未导出文件' : '处理失败',
           ...(cancelled ? {} : { errorMessage: error instanceof Error ? error.message : '处理失败，请重试。' }),
+          ...(error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? { errorCode: error.code } : {}),
+          ...(workflow ? { workflow: { stepSummaries: [...completedSteps], ...(currentStep ? { currentStep } : {}) } } : {}),
         };
       }
       onProgress?.(tasks[index]);
     }
     return tasks;
+}
+
+export function createFileProcessor(runRequest: RequestRunner = runWorkerRequest) {
+  return async function processFiles(
+    files: readonly ImportedFile[], operation: string, params: Record<string, unknown>, options: ProcessingOptions,
+    onProgress?: (task: ProcessedTask) => void, signal?: AbortSignal,
+  ): Promise<ProcessedTask[]> {
+    return processQueue(files, operation, params, options, onProgress, signal, runRequest);
   };
 }
 
 export const processFiles = createFileProcessor();
+
+export function createWorkflowProcessor(runRequest: RequestRunner = runWorkerRequest) {
+  return async function processWorkflowFiles(
+    files: readonly ImportedFile[], definition: WorkflowDefinition, options: ProcessingOptions,
+    onProgress?: (task: ProcessedTask) => void, signal?: AbortSignal,
+  ): Promise<ProcessedTask[]> {
+    // Snapshot validated configuration before asynchronous work; later edits cannot change an in-flight request.
+    const workflow = workflowDefinitionSchema.parse(definition);
+    return processQueue(files, 'workflow', {}, options, onProgress, signal, runRequest, workflow);
+  };
+}
+
+export const processWorkflowFiles = createWorkflowProcessor();
 
 export async function processCombinedFiles(
   files: ImportedFile[], operation: 'merge' | 'bilingual' | 'compare', params: Record<string, unknown>,

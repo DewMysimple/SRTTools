@@ -26,6 +26,9 @@ export interface ParseDiagnostic {
   message: string;
   line?: number;
   cueIndex?: number;
+  stepId?: string;
+  stepIndex?: number;
+  operation?: string;
 }
 
 export interface ParseResult {

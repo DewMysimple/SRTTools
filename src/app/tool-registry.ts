@@ -1,17 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { Replace, Eraser, Space, FileText, ListOrdered, Clock3, ScanLine, RefreshCw, Combine, Copy, CaseSensitive, WrapText, CodeXml, Scissors, Languages, GitCompareArrows, Timer, Crop, FileCode2, FilePenLine, Info, Braces } from 'lucide-react';
-import { z } from 'zod';
-
-export interface Parameter {
-  key: string;
-  label: string;
-  type: 'text' | 'number' | 'select' | 'checkbox';
-  default: string | number | boolean;
-  options?: { value: string; label: string }[];
-  help?: string;
-  min?: number;
-  max?: number;
-}
+import { getOperationDefinition, validateParameterValues, type Parameter, type WorkflowOperationId } from '../core/operation-registry';
+export type { Parameter } from '../core/operation-registry';
 export interface ToolDefinition {
   id: string;
   name: string;
@@ -27,24 +17,22 @@ const select = (key: string, label: string, choices: [string, string][], initial
 const number = (key: string, label: string, initial: number, min?: number, max?: number): Parameter => ({ key, label, type: 'number', default: initial, min, max });
 const check = (key: string, label: string, initial = false): Parameter => ({ key, label, type: 'checkbox', default: initial });
 const tool = (id: string, name: string, description: string, category: string, icon: LucideIcon, parameters: Parameter[] = [], note = '仅处理字幕正文，保留原始时间和条目顺序。', combined = false): ToolDefinition => ({ id, name, description, category, icon, parameters, note, combined, keywords: [id, category] });
+const workflowTool = (id: WorkflowOperationId, icon: LucideIcon): ToolDefinition => {
+  const definition = getOperationDefinition(id)!;
+  return { ...definition, icon, keywords: [id, definition.category] };
+};
 
 export const tools: ToolDefinition[] = [
-  tool('replace', '查找和替换', '批量替换字幕中的文字，支持正则表达式', '文本处理', Replace, [
-    { key: 'find', label: '查找内容', type: 'text', default: '' },
-    { key: 'replacement', label: '替换为', type: 'text', default: '', help: '留空可删除匹配文字；普通文本模式按字面替换。' },
-    check('caseSensitive', '区分大小写'), check('regex', '使用正则表达式（高级）'),
-  ]),
-  tool('remove-empty', '删除空白字幕', '清除只包含空格、空行或不可见字符的条目', '文本处理', Eraser),
-  tool('clean-spaces', '空格清理', '清理行首行尾空格，合并连续空格', '文本处理', Space),
+  workflowTool('replace', Replace),
+  workflowTool('remove-empty', Eraser),
+  workflowTool('clean-spaces', Space),
   tool('extract', '文本提取', '导出纯文本，方便阅读和整理文稿', '文本处理', FileText, [check('preserveLines', '保留字幕内的换行', true)], '输出 TXT，不包含时间和编号。'),
   tool('duplicates', '删除重复字幕', '按全部文本或连续重复条目去重', '文本处理', Copy, [select('strategy', '去重范围', [['consecutive', '仅连续重复'], ['all', '全部相同文本']])]),
   tool('punctuation', '标点转换', '在常见中文和英文标点之间转换', '文本处理', Languages, [select('direction', '转换方向', [['zh', '英文标点 → 中文标点'], ['en', '中文标点 → 英文标点']])]),
-  tool('chinese', '简繁转换', '在本机按词组转换简体或繁体字幕正文', '文本处理', Languages, [
-    select('direction', '转换方向', [['s2t', '简体 → 繁体（通用）'], ['t2s', '繁体 → 简体']]),
-  ], '这是字词转换，不等同于翻译；专有名词与歧义词建议人工核对。保留原编号、时间、换行和格式标记。'),
+  workflowTool('chinese', Languages),
   tool('case', '英文大小写', '将英文转为大写、小写或单词首字母大写', '文本处理', CaseSensitive, [select('mode', '大小写规则', [['lower', '全部小写'], ['upper', '全部大写'], ['title', '单词首字母大写']])]),
-  tool('wrap', '自动换行', '按每行字符数重新排列字幕文本', '文本处理', WrapText, [number('maxChars', '每行最多字符', 24, 1, 10_000)], '按 Unicode 字符计数并优先在空格断行；请人工复核语义分句。'),
-  tool('strip-html', 'HTML 清理', '移除正文标签并还原常见 HTML 实体', '文本处理', CodeXml),
+  workflowTool('wrap', WrapText),
+  workflowTool('strip-html', CodeXml),
   tool('merge', '多文件合并', '将多个字幕文件合并为一份 SRT', '合并与拆分', Combine, [select('strategy', '合并顺序', [['file', '按文件列表顺序'], ['time', '按开始时间排序']])], '保留各文件的原始时间；可在下方调整文件顺序，合并后重新编号。', true),
   tool('bilingual', '双语字幕合并', '按编号或时间匹配两份字幕', '合并与拆分', Languages, [select('mode', '匹配方式', [['index', '按字幕编号'], ['time', '按开始时间']]), number('toleranceMs', '时间容差（毫秒）', 300, 0), check('reverse', '第二份文件的文字显示在上方')], '需要恰好两份字幕。未匹配条目会保留，并在摘要中列出。', true),
   tool('split-count', '按条数拆分', '将字幕拆成若干份，保留原始时间', '合并与拆分', Scissors, [number('count', '每个文件的条目数', 100, 1, 1_000_000)], '不重置时间；每份输出重新编号。'),
@@ -53,8 +41,8 @@ export const tools: ToolDefinition[] = [
   tool('convert', '格式转换', '在 SRT、VTT、TXT、CSV、ASS 之间转换', '格式转换', RefreshCw, [select('format', '输出格式', [['srt', 'SRT · 标准字幕'], ['vtt', 'VTT · 网页字幕'], ['txt', 'TXT · 纯文本'], ['csv', 'CSV · 表格字幕'], ['ass', 'ASS · 基础字幕']])], 'ASS / SSA 的字体、位置、颜色和特效会丢失；VTT 设置会丢失。无时间信息的 TXT 无法生成字幕。CSV 列为 index,start,end,text。'),
   tool('detect', '字幕检测', '检查编号、重叠、空白和异常时间', '检测与修复', ScanLine, [], '只生成检测报告，不修改字幕。报告包含问题位置与原因，不保存字幕全文。'),
   tool('repair', '检测与修复', '重新编号、删除空白，并按所选策略修复时间', '检测与修复', ListOrdered, [select('invalidTime', '无效时间策略', [['keep', '保留并报告（阻止无效字幕导出）'], ['drop', '删除无效时间条目'], ['extend', '将结束时间延长至开始后 1 秒']]), select('overlap', '时间重叠策略', [['keep', '保留并报告'], ['trim', '缩短前一条的结束时间']])], '执行后重新检测。删除和时间调整只按你选择的策略进行；无法安全修复时会停止导出。'),
-  tool('renumber', '重新编号', '从 1 开始为字幕连续编号', '检测与修复', ListOrdered, [], '只更改编号，保留正文和时间。'),
-  tool('shift', '整体时间偏移', '让全部字幕提前或延后指定时间', '时间处理', Clock3, [number('offsetMs', '偏移量（毫秒）', 1000), select('policy', '偏移后出现无效时间', [['reject', '停止处理，保留输入'], ['clamp', '负时间裁到零（空区间仍报错）'], ['drop', '删除无效时间条目']])], '正数表示延后，负数表示提前。默认遇到无效时间即停止；裁剪或删除需要你明确选择。'),
+  workflowTool('renumber', ListOrdered),
+  workflowTool('shift', Clock3),
   tool('duration', '调整显示时长', '统一增加或减少字幕的显示时间', '时间处理', Timer, [number('deltaMs', '时长增减（毫秒）', 500), select('policy', '调整后出现无效时间', [['reject', '停止处理，保留输入'], ['drop', '删除无效时间条目']])], '仅调整结束时间。默认遇到结束时间不晚于开始时间即停止，可明确选择删除无效条目。'),
   tool('min-duration', '最短显示时长', '将过短的字幕延长至指定时长', '时间处理', Timer, [number('durationMs', '最短时长（毫秒）', 1000, 1)], '延长时间可能造成重叠，结果会重新检测。'),
   tool('max-duration', '最长显示时长', '将过长的字幕缩短至指定时长', '时间处理', Timer, [number('durationMs', '最长时长（毫秒）', 7000, 1)], '仅缩短结束时间，保留正文与开始时间。'),
@@ -68,27 +56,5 @@ export const categories = Object.keys(categoryIcons);
 export const quickToolIds = ['replace', 'shift', 'convert', 'remove-empty', 'detect', 'merge'];
 export function defaultParameters(definition: ToolDefinition): Record<string, unknown> { return Object.fromEntries(definition.parameters.map(p => [p.key, p.default])); }
 export function validateParameters(definition: ToolDefinition, params: Record<string, unknown>): Record<string, string> {
-  const errors: Record<string, string> = {};
-  for (const p of definition.parameters) {
-    if (p.type === 'number') {
-      const schema = z.number().int().min(p.min ?? -Number.MAX_SAFE_INTEGER).max(p.max ?? Number.MAX_SAFE_INTEGER);
-      if (!schema.safeParse(params[p.key]).success) {
-        if (p.min !== undefined && p.max !== undefined) errors[p.key] = `请输入 ${p.min}–${p.max} 范围内的整数。`;
-        else errors[p.key] = p.min !== undefined ? `请输入不小于 ${p.min} 的整数。` : '请输入有效整数。';
-      }
-    } else if (p.type === 'select') {
-      if (!p.options?.some(option => option.value === params[p.key])) errors[p.key] = '请选择受支持的选项。';
-    } else {
-      const expected = p.type === 'checkbox' ? 'boolean' : 'string';
-      if (typeof params[p.key] !== expected) errors[p.key] = '请检查此项。';
-    }
-  }
-  if (definition.id === 'replace') {
-    if (!params.find) errors.find = '请输入要查找的内容。';
-    if (params.regex && typeof params.find === 'string') { try { new RegExp(params.find, 'gu'); } catch { errors.find = '正则表达式无效，请检查括号或转义符。'; } }
-  }
-  if (definition.id === 'crop' && typeof params.endMs === 'number' && typeof params.startMs === 'number' && params.endMs <= params.startMs) {
-    errors.endMs = '结束时间必须大于开始时间。';
-  }
-  return errors;
+  return validateParameterValues(definition, params);
 }
