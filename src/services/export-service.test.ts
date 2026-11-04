@@ -20,6 +20,8 @@ describe('safe ZIP exports', () => {
     const zip = await JSZip.loadAsync(await createZip([{ name: '../CON.srt', bytes: new Uint8Array([1, 2]) }]));
     expect(Object.keys(zip.files)).toEqual(['.._CON.srt']);
     expect(safeFileName('CON.srt')).toBe('_CON.srt');
+    expect(safeFileName('COM¹.srt')).toBe('_COM¹.srt');
+    expect(safeFileName('lpt³.vtt')).toBe('_lpt³.vtt');
     expect(safeFileName('...')).toBe('subtitle');
     expect(safeFileName('test.srt.  ')).toBe('test.srt');
   });

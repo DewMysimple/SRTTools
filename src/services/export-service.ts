@@ -23,7 +23,7 @@ export function safeFileName(name: string): string {
   // eslint-disable-next-line no-control-regex -- Windows forbids control characters in filenames.
   let safe = name.replace(/[<>:"/\\|?*\x00-\x1f]/gu, '_').replace(/[. ]+$/u, '').trim();
   if (!safe || safe === '.' || safe === '..') safe = 'subtitle';
-  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(safe)) safe = `_${safe}`;
+  if (/^(con|prn|aux|nul|(?:com|lpt)[1-9¹²³])(?:\.|$)/iu.test(safe)) safe = `_${safe}`;
   if (safe.length > 220) {
     const { base, extension } = nameParts(safe);
     safe = truncateName(base, 220 - extension.length) + extension;

@@ -45,7 +45,7 @@ function readDocument(file: ImportedFile, options: ProcessingOptions): ImportedD
 function outputName(fileName: string, extension: string, options: ProcessingOptions, index = 1): string {
   validateFileNamePattern(options.fileNamePattern);
   const base = fileName.replace(/\.[^.]+$/u, '');
-  const rendered = options.fileNamePattern.replaceAll('{name}', base).replaceAll('{index}', String(index));
+  const rendered = options.fileNamePattern.replace(/\{name\}|\{index\}/gu, token => token === '{name}' ? base : String(index));
   return safeFileName(`${rendered}.${extension}`);
 }
 
@@ -85,6 +85,9 @@ function assertCanExport(input: ImportedDocument, operation: string): void {
     : errors;
   if (unresolved.length > 0) {
     throw new SubtitleError('PARSE_ERRORS', '文件包含解析错误。请先查看字幕检测结果；为防止丢失内容，本次没有生成字幕文件。');
+  }
+  if (!input.document.cues.length) {
+    throw new SubtitleError('EMPTY_DOCUMENT', '文件没有可处理的字幕条目，请检查源文件或先运行字幕检测。');
   }
 }
 

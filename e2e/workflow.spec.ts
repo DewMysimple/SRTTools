@@ -1,4 +1,6 @@
 import { expect, test, type Download, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { decodeBytes, parseSubtitle } from '../src/core';
 
 interface TestFile { name: string; mimeType: string; buffer: Buffer }
 function subtitle(name: string, text: string, start = '00:00:01,000', end = '00:00:03,000'): TestFile {
@@ -90,4 +92,137 @@ test('combined failures preserve input provenance and never create partial merge
   await expect(page.locator('.diagnostics')).toContainText('broken.srt');
   await expect(page.locator('.cue-preview')).toContainText('Keep me');
   await expect(page.locator('.output-list')).toHaveCount(0);
+});
+
+test('a cancelled file picker keeps the queue and current export, but editing inputs invalidates the result', async ({ page }) => {
+  await page.goto('/#/tools/replace');
+  const input = subtitle('first.srt', '原始文本');
+  await importFiles(page, [input]);
+  const preview = page.getByRole('button', { name: '预览处理结果', exact: true });
+  const save = page.getByRole('button', { name: '另存为', exact: true });
+  const replacement = page.getByLabel('替换为', { exact: true });
+  await page.getByLabel('查找内容', { exact: true }).fill('原始');
+  await replacement.fill('修改');
+  await preview.click();
+  await expect(save).toBeEnabled();
+
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: '选择文件', exact: true }).click();
+  await (await chooser).element().dispatchEvent('cancel');
+  await expect(page.getByRole('button', { name: '选择文件', exact: true })).toBeEnabled();
+  await expect(page.locator('.file-row')).toHaveCount(1);
+  await expect(save).toBeEnabled();
+
+  const downloads: Download[] = [];
+  page.on('download', download => downloads.push(download));
+  await replacement.fill('再次修改');
+  await expect(save).toHaveCount(0);
+  await page.keyboard.press('Control+s');
+  await preview.click();
+  await expect(save).toBeEnabled();
+  await expect(page.locator('.results-panel')).toContainText('再次修改文本');
+
+  await page.locator('.export-options > summary').click();
+  await page.getByLabel('输入文件编码', { exact: true }).selectOption('utf-8');
+  await expect(save).toHaveCount(0);
+  await page.keyboard.press('Control+s');
+  await preview.click();
+  await expect(save).toBeEnabled();
+  await importFiles(page, [subtitle('second.srt', '另一条字幕')]);
+  await expect(page.locator('.file-row')).toHaveCount(2);
+  await expect(save).toHaveCount(0);
+  await page.keyboard.press('Control+s');
+  await preview.click();
+  await expect(page.getByRole('button', { name: '导出全部文件', exact: true })).toBeEnabled();
+  await page.goto('/#/tools/renumber');
+  await expect(page.locator('.results-panel')).toHaveCount(0);
+  await page.keyboard.press('Control+s');
+  expect(downloads).toHaveLength(0);
+});
+
+test('desktop batch export reuses the canonical directory selected while authorizing the first file', async ({ page }) => {
+  const bytes = [...subtitle('unused.srt', '保留原文').buffer];
+  const preferred = 'C:\\默认输出';
+  const actual = 'D:\\';
+  await page.addInitScript(({ bytes, preferred, actual }) => {
+    let history: unknown = null;
+    const requests: unknown[] = [];
+    Object.assign(window, {
+      isTauri: true,
+      saveRequests: requests,
+      __TAURI_INTERNALS__: {
+        transformCallback: () => 1,
+        invoke: async (command: string, args: { key?: string; value?: unknown; directory?: string; name?: string }) => {
+          if (command === 'plugin:event|listen') return 1;
+          if (command === 'plugin:event|unlisten') return null;
+          if (command === 'get_local_value') return args.key === 'settings' ? { outputDirectory: preferred } : history;
+          if (command === 'set_local_value') { history = args.value; return null; }
+          if (command === 'select_files') {
+            return ['第一集 (😀).srt', '第二集.srt'].map(name => ({ name, path: `C:\\字幕\\${name}`, bytes, size: bytes.length }));
+          }
+          if (command === 'save_output') {
+            requests.push(args.directory);
+            if (requests.length === 1 || args.directory === actual) return actual + args.name;
+            return null;
+          }
+          throw new Error(`Unexpected mock IPC: ${command}`);
+        },
+      },
+      __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => undefined },
+    });
+  }, { bytes, preferred, actual });
+  await page.goto('/#/tools/renumber');
+  await page.getByRole('button', { name: '选择文件', exact: true }).click();
+  await expect(page.locator('.file-row')).toHaveCount(2);
+  await page.getByRole('button', { name: '预览处理结果', exact: true }).click();
+  await page.getByRole('button', { name: '导出全部文件', exact: true }).click();
+  await expect(page.locator('.export-success')).toContainText('已导出 2 个文件');
+  const requests = await page.evaluate(() => Reflect.get(window, 'saveRequests'));
+  expect(requests).toEqual([preferred, actual]);
+});
+
+test('synthetic Unicode and legacy fixtures preserve body and timing, while unsafe inputs stay isolated', async ({ page }) => {
+  const unicodeName = '第一集 (测试 😀).srt';
+  const unicode = await readFile(new URL(`../examples/回归/${unicodeName}`, import.meta.url));
+  const duplicateName = '重复编号.srt';
+  const duplicate = await readFile(new URL(`../examples/回归/${duplicateName}`, import.meta.url));
+  const invalidName = '非法时间.srt';
+  const invalid = await readFile(new URL(`../examples/回归/${invalidName}`, import.meta.url));
+  await page.goto('/#/tools/renumber');
+  await importFiles(page, [
+    { name: unicodeName, mimeType: 'text/plain', buffer: unicode },
+    { name: duplicateName, mimeType: 'text/plain', buffer: duplicate },
+    { name: invalidName, mimeType: 'text/plain', buffer: invalid },
+    { name: 'empty.srt', mimeType: 'text/plain', buffer: Buffer.alloc(0) },
+  ]);
+  await page.getByRole('button', { name: '预览处理结果', exact: true }).click();
+  await expect(page.locator('.task-row .status-badge.success')).toHaveCount(2);
+  await expect(page.locator('.task-row .status-badge.failed')).toHaveCount(2);
+  await expect(page.locator('.task-list')).toContainText('非法时间');
+
+  const downloading = page.waitForEvent('download');
+  await page.locator('.output-list > div').filter({ hasText: '重复编号_processed.srt' }).getByRole('button', { name: '导出', exact: true }).click();
+  const output = await downloadText(await downloading);
+  const expected = parseSubtitle(decodeBytes(duplicate).text, duplicateName).document.cues;
+  expect(expected.map(cue => cue.index)).toEqual([3, 3]);
+  const actual = parseSubtitle(output, duplicateName).document.cues;
+  expect(actual.map(({ index, text, startMs, endMs }) => ({ index, text, startMs, endMs })))
+    .toEqual(expected.map(({ text, startMs, endMs }, index) => ({ index: index + 1, text, startMs, endMs })));
+  expect(output).toContain('\r\n');
+  expect(await readFile(new URL(`../examples/回归/${duplicateName}`, import.meta.url))).toEqual(duplicate);
+
+  await page.getByRole('button', { name: '清空', exact: true }).click();
+  const legacyName = '旧编码 (GBK).srt';
+  const legacy = await readFile(new URL(`../examples/回归/${legacyName}`, import.meta.url));
+  await importFiles(page, [{ name: legacyName, mimeType: 'text/plain', buffer: legacy }]);
+  await page.getByRole('button', { name: '预览处理结果', exact: true }).click();
+  await expect(page.locator('.task-row .status-badge.failed')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '另存为', exact: true })).toHaveCount(0);
+  await page.locator('.export-options > summary').click();
+  await page.getByLabel('输入文件编码', { exact: true }).selectOption('gb18030');
+  await page.getByRole('button', { name: '预览处理结果', exact: true }).click();
+  await expect(page.locator('.task-row .status-badge.success')).toHaveCount(1);
+  const legacyDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  expect(await downloadText(await legacyDownload)).toContain('合成示例：中文字幕');
 });

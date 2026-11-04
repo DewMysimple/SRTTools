@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appendHistory, clearHistory, loadHistory, type HistoryRecord } from './history-service';
 import { defaultSettings, loadSettings, saveSettings, validateFileNamePattern } from './settings-service';
+import { useAppStore } from '../stores/app-store';
 
 const native = vi.hoisted(() => ({ enabled: false, invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => native.enabled, invoke: native.invoke }));
@@ -10,6 +11,7 @@ beforeEach(() => {
   native.enabled = false;
   native.invoke.mockReset();
   storage = new Map();
+  useAppStore.setState({ files: [], settings: defaultSettings, history: [], notices: [], initialized: false });
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
@@ -20,6 +22,38 @@ afterEach(() => vi.unstubAllGlobals());
 const record = (id: string): HistoryRecord => ({
   id, createdAt: '2026-11-03T10:00:00.000Z', toolName: '时间偏移',
   inputCount: 2, successCount: 1, failedCount: 1, outputDirectory: 'E:\\Export', summary: '1 个文件处理成功',
+});
+
+describe('startup and file queue isolation', () => {
+  it('loads valid settings even if the history key contains damaged JSON', async () => {
+    await saveSettings({ ...defaultSettings, theme: 'dark' });
+    storage.set('subtitle-tools:history', '{broken');
+    await useAppStore.getState().initialize();
+    expect(useAppStore.getState()).toMatchObject({ settings: { theme: 'dark' }, history: [], initialized: true });
+    expect(useAppStore.getState().notices[0]?.message).toContain('处理记录读取失败');
+    expect(storage.get('subtitle-tools:history')).toBe('{broken');
+  });
+
+  it('loads valid history even if the settings key contains damaged JSON', async () => {
+    await appendHistory(record('a'));
+    storage.set('subtitle-tools:settings', '{broken');
+    await useAppStore.getState().initialize();
+    expect(useAppStore.getState()).toMatchObject({ settings: defaultSettings, history: [record('a')], initialized: true });
+    expect(useAppStore.getState().notices[0]?.message).toContain('本地设置读取失败');
+  });
+
+  it('preserves queue identity when a chooser cancels or repeats the same native path', () => {
+    const { addFiles } = useAppStore.getState();
+    const original = { id: 'original', name: '中文 (😀).srt', path: 'D:\\示例\\中文 (😀).srt', bytes: new Uint8Array(1), size: 1 };
+    addFiles([original]);
+    const queue = useAppStore.getState().files;
+    addFiles([]);
+    expect(useAppStore.getState().files).toBe(queue);
+    addFiles([{ ...original, id: 'repeated' }]);
+    expect(useAppStore.getState().files).toBe(queue);
+    addFiles([{ ...original, id: 'another', path: 'D:\\另一个目录\\中文 (😀).srt' }]);
+    expect(useAppStore.getState().files.map(file => file.id)).toEqual(['original', 'another']);
+  });
 });
 
 describe('settings persistence', () => {

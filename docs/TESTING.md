@@ -1,5 +1,7 @@
 # 测试与验收
 
+v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [发布检查表](RELEASE_CHECKLIST_v0.1.1.md)。回归夹具位于 [examples/回归](../examples/回归)，包含 UTF-8 BOM、GBK CRLF、Unicode 文件名、重复编号和损坏时间行。Playwright 将本次运行的截图留在 `test-results/`。
+
 ## 自动检查
 
 在项目根目录执行：

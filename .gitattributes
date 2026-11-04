@@ -1,0 +1,2 @@
+# Preserve the original byte encodings and line endings of regression fixtures.
+examples/回归/*.srt -text

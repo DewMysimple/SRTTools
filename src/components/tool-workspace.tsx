@@ -14,6 +14,13 @@ import { FileSelector, FileList, EmptyState, NoticeBox, BusyLabel, errorText, fo
 const encodingChoices = [['utf-8', 'UTF-8'], ['utf-8-bom', 'UTF-8 BOM'], ['utf-16le', 'UTF-16 LE'], ['utf-16be', 'UTF-16 BE']];
 const statusNames = { queued: '等待处理', processing: '处理中', success: '已处理', failed: '失败', cancelled: '已取消' };
 
+function savedOutputDirectory(path: string): string {
+  const separator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  if (separator < 0) return '';
+  // Preserve the separator in drive roots: D: alone is a drive-relative path.
+  return path.slice(0, separator === 0 || separator === 2 && path[1] === ':' ? separator + 1 : separator);
+}
+
 export function ParameterForm({ definition, params, onChange, errors, disabled }: { definition: ToolDefinition; params: Record<string, unknown>; onChange: (value: Record<string, unknown>) => void; errors: Record<string, string>; disabled: boolean }) {
   return <div className="parameter-grid">{definition.parameters.map(field => <div className={`field ${field.type === 'checkbox' ? 'checkbox-field' : ''}`} key={field.key}>
     {field.type === 'checkbox' ? <label className="check-label"><input type="checkbox" checked={params[field.key] === true} disabled={disabled} onChange={e => onChange({ ...params, [field.key]: e.target.checked })} />{field.label}</label> : <><label htmlFor={`param-${field.key}`}>{field.label}</label>{field.type === 'select' ? <select id={`param-${field.key}`} value={String(params[field.key] ?? '')} disabled={disabled} onChange={e => onChange({ ...params, [field.key]: e.target.value })}>{field.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input id={`param-${field.key}`} type={field.type} min={field.min} step={field.type === 'number' ? 1 : undefined} value={typeof params[field.key] === 'number' && Number.isNaN(params[field.key]) ? '' : String(params[field.key] ?? '')} disabled={disabled} aria-invalid={!!errors[field.key]} onChange={e => onChange({ ...params, [field.key]: field.type === 'number' ? e.target.value === '' ? NaN : Number(e.target.value) : e.target.value })} />}</>}
@@ -37,7 +44,7 @@ export function ToolWorkspace({ definition, batch = false }: { definition: ToolD
   const changeOptions = (next: ProcessingOptions) => { setOptions(next); invalidate(); };
   const persistRecord = async (current: ProcessedTask[], paths: string[] = []) => {
     const successes = current.filter(t => t.status === 'success').length; const failures = current.filter(t => t.status === 'failed').length;
-    const next: HistoryRecord = { id: record.current?.id ?? crypto.randomUUID(), createdAt: record.current?.createdAt ?? new Date().toISOString(), toolName: definition.name, inputCount: files.length, successCount: definition.combined && successes ? files.length : successes, failedCount: definition.combined && failures ? files.length : failures, outputDirectory: paths.length && isDesktop() ? paths[0].replace(/[\\/][^\\/]+$/, '') : '', outputPaths: paths, summary: paths.length ? `已导出 ${paths.length} 个文件；处理成功 ${successes} 项，失败 ${failures} 项。` : `已处理 ${successes} 项，失败 ${failures} 项；结果尚未导出。` };
+    const next: HistoryRecord = { id: record.current?.id ?? crypto.randomUUID(), createdAt: record.current?.createdAt ?? new Date().toISOString(), toolName: definition.name, inputCount: files.length, successCount: definition.combined && successes ? files.length : successes, failedCount: definition.combined && failures ? files.length : failures, outputDirectory: paths.length && isDesktop() ? savedOutputDirectory(paths[0]) : '', outputPaths: paths, summary: paths.length ? `已导出 ${paths.length} 个文件；处理成功 ${successes} 项，失败 ${failures} 项。` : `已处理 ${successes} 项，失败 ${failures} 项；结果尚未导出。` };
     record.current = next;
     try { await appendHistory(next); await useAppStore.getState().refreshHistory(); } catch (error) { notify(`处理结果已保留，但记录保存失败：${errorText(error)}`, 'error'); }
   };
@@ -80,17 +87,32 @@ export function ToolWorkspace({ definition, batch = false }: { definition: ToolD
     const ready = only ? [only] : uniqueOutputNames(tasks.filter(t => t.status === 'success').flatMap(t => t.outputs));
     if (!ready.length || processing || exporting) return;
     setExporting(true); setBusy(true); const paths: string[] = [...exportedPaths];
+    const desktop = isDesktop();
     try {
       if (zip) {
-        const bytes = await createZip(ready); const path = await saveOutput('subtitle-tools_results.zip', bytes, outputDirectory || undefined); if (path) paths.push(path);
+        const bytes = await createZip(ready);
+        const path = await saveOutput('subtitle-tools_results.zip', bytes, outputDirectory || undefined);
+        if (path) {
+          paths.push(path);
+          if (desktop && outputDirectory) setOutputDirectory(savedOutputDirectory(path));
+        }
       } else {
         let directory = outputDirectory || undefined;
-        if (ready.length > 1 && isDesktop() && !directory) { directory = await pickDirectory() ?? undefined; if (!directory) return; }
-        for (const output of ready) { const path = await saveOutput(output.name, output.bytes, directory); if (!path) break; paths.push(path); }
+        if (ready.length > 1 && desktop && !directory) { directory = await pickDirectory() ?? undefined; if (!directory) return; }
+        for (const output of ready) {
+          const path = await saveOutput(output.name, output.bytes, directory);
+          if (!path) break;
+          paths.push(path);
+          if (desktop && directory) {
+            // A startup authorization dialog can select a different directory.
+            directory = savedOutputDirectory(path);
+            if (outputDirectory) setOutputDirectory(directory);
+          }
+        }
       }
       if (paths.length > exportedPaths.length) {
         setExportedPaths(paths); await persistRecord(tasks, paths); notify(`已导出 ${paths.length - exportedPaths.length} 个文件。`, 'success');
-        if (settings.autoOpenDirectory && isDesktop()) await openOutputDirectory(paths.at(-1)!);
+        if (settings.autoOpenDirectory && desktop) await openOutputDirectory(paths.at(-1)!);
       }
     } catch (error) { if (paths.length > exportedPaths.length) { setExportedPaths(paths); await persistRecord(tasks, paths); } notify(`导出失败，处理结果已保留：${errorText(error)}`, 'error'); }
     finally { setBusy(false); if (mounted.current) setExporting(false); }

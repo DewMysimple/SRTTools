@@ -57,7 +57,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 npm run tauri -- build
 ```
 
-生成：`src-tauri/target/release/bundle/nsis/Subtitle Tools_0.1.0_x64-setup.exe`。
+生成：`src-tauri/target/release/bundle/nsis/Subtitle Tools_0.1.1_x64-setup.exe`。
 
 NSIS 为当前用户安装，提供简体中文界面。运行程序位于 `src-tauri/target/release/subtitle-tools.exe`。初次构建需要下载 Rust crates 和 NSIS 工具；缺少 WebView2 的机器由安装器下载官方运行时。应用本身没有云端字幕服务。当前包未配置代码签名。
 
@@ -98,4 +98,4 @@ examples/          可手动导入的示例文件
 
 **尚未实现？** 简繁转换、关键词过滤、独立字幕匹配、自定义可保存流程、专用每行字数截断工具尚未开放。自动换行是字符规则，不做语义分句。软件不包含视频播放、时间轴或轨道编辑。
 
-已通过 122 项单元与集成测试、9 项浏览器流程、10 项 Rust 测试，并实际验证最终 NSIS 包的安装、进程启动和卸载。原生文件对话框 / 拖放的完整交互仍需人工验收，详细结果和安装包 SHA-256 见 [TESTING](docs/TESTING.md)。
+历史 0.1.0 验收覆盖 122 项单元与集成测试、9 项浏览器流程、10 项 Rust 测试以及 NSIS 安装、启动与卸载。新版本验收与尚待覆盖的桌面场景见 [v0.1.1 发布检查表](docs/RELEASE_CHECKLIST_v0.1.1.md)，版本变更见[更新记录](docs/CHANGELOG.md)。

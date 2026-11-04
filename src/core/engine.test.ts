@@ -137,6 +137,14 @@ describe('text tools preserve timestamps', () => {
     expect(hasVisibleText('😀')).toBe(true);
     expect(processDocument(doc([cue(1, 1, 5, ' '), cue(2, 5, 10, '<b></b>'), cue(3, 10, 20, '字')]), 'remove-empty').documents[0].cues).toHaveLength(1);
   });
+  it('cleans spaces idempotently while preserving timings, original text and clean cues', () => {
+    const input = doc([cue(1, 1, 5, ' 字   幕 '), cue(2, 5, 10, '已经清理')]);
+    const first = processDocument(input, 'clean-spaces').documents[0];
+    const second = processDocument(first, 'clean-spaces').documents[0];
+    expect(first.cues).toEqual([{ ...input.cues[0], text: '字 幕' }, input.cues[1]]);
+    expect(second.cues).toEqual(first.cues);
+    expect(input.cues[0].text).toBe(' 字   幕 ');
+  });
   it('only removes exact duplicate text with selectable consecutive/all scope', () => {
     const cues = [cue(1, 1, 2, 'a'), cue(2, 2, 3, 'a'), cue(3, 3, 4, 'b'), cue(4, 4, 5, 'a')];
     expect(removeDuplicateCues(cues, 'consecutive').map(item => item.index)).toEqual([1, 3, 4]);

@@ -28,10 +28,14 @@ pub fn validate_name(name: &str) -> Result<(), String> {
         .next()
         .unwrap_or_default()
         .to_ascii_uppercase();
+    let device_number = reserved
+        .strip_prefix("COM")
+        .or_else(|| reserved.strip_prefix("LPT"));
     if ["CON", "PRN", "AUX", "NUL"].contains(&reserved.as_str())
-        || (reserved.len() == 4
-            && (reserved.starts_with("COM") || reserved.starts_with("LPT"))
-            && reserved.ends_with(['1', '2', '3', '4', '5', '6', '7', '8', '9']))
+        || matches!(
+            device_number,
+            Some("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³")
+        )
     {
         return Err("此文件名为系统保留名称，请更换文件名。".into());
     }
@@ -140,6 +144,8 @@ mod tests {
             "C:\\x.srt",
             "CON.srt",
             "LPT1.txt",
+            "COM¹.srt",
+            "lpt³.vtt",
             "a.exe",
             "a.srt ",
             "a:stream.srt",
@@ -167,6 +173,25 @@ mod tests {
         );
         assert_eq!(fs::read(path).unwrap(), b"result");
         assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 2);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn unicode_long_path_conflicts_preserve_original_bytes() {
+        let root = TestDir::new();
+        let directory = fs::canonicalize(&root.0)
+            .unwrap()
+            .join("字幕 工程 (😀)".repeat(9))
+            .join("长路径".repeat(52));
+        fs::create_dir_all(&directory).unwrap();
+        let original = directory.join("片段 (😀) CASE.srt");
+        assert!(original.to_string_lossy().encode_utf16().count() > 260);
+        fs::write(&original, b"original").unwrap();
+        let output = write_unique(&directory, "片段 (😀) case.srt", b"result").unwrap();
+        assert_eq!(output.file_name().unwrap(), "片段 (😀) case (1).srt");
+        assert_eq!(fs::read(original).unwrap(), b"original");
+        assert_eq!(fs::read(output).unwrap(), b"result");
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 2);
     }
 
     #[test]

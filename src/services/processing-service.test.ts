@@ -12,6 +12,24 @@ const file = (name = 'sample.srt', text = sample): ImportedFile => {
 };
 
 describe('file → processing → export integration', () => {
+  it('substitutes filename tokens once and preserves dollar signs and braces in the source name', () => {
+    const task = executeProcessingRequest({
+      kind: 'file', files: [file("字幕 $& $' {index}.srt")], operation: 'renumber', params: {},
+      options: { ...options, fileNamePattern: '{name}_{index}' },
+    });
+    expect(task.outputs[0]?.name).toBe("字幕 $& $' {index}_1.srt");
+  });
+
+  it('reports an empty input without making an empty processed subtitle available for export', () => {
+    const input = file('empty.srt', '');
+    const request: ProcessingRequest = { kind: 'file', files: [input], operation: 'renumber', params: {}, options };
+    const failed = executeProcessingRequest(request);
+    expect(failed).toMatchObject({ status: 'failed', errorCode: 'EMPTY_DOCUMENT', outputs: [] });
+    expect(failed.diagnostics.some(diagnostic => diagnostic.code === 'EMPTY_FILE')).toBe(true);
+    const report = executeProcessingRequest({ ...request, operation: 'detect' });
+    expect(report).toMatchObject({ status: 'success', outputs: [{ name: 'empty_processed.json' }] });
+  });
+
   it('processes a real multiline subtitle and exports round-trippable UTF-16', () => {
     const task = executeProcessingRequest({
       kind: 'file', files: [file()], operation: 'replace', params: { find: 'Hello', replacement: '你好', caseSensitive: true },

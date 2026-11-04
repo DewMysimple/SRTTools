@@ -7,12 +7,12 @@ async function importFiles(page: Page, files = [{ name: 'lesson.srt', mimeType: 
   await page.getByRole('button', { name: '选择文件', exact: true }).click();
   await (await picker).setFiles(files);
 }
-test('navigation, responsive layout, search, themes and persisted settings', async ({ page }) => {
+test('navigation, responsive layout, search, themes and persisted settings', async ({ page }, testInfo) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '让字幕处理，简单一点。' })).toBeVisible();
   await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 1200);
-  await page.screenshot({ path: 'docs/screenshots/home.png', fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: testInfo.outputPath('home.png'), fullPage: true, animations: 'disabled' });
   await page.getByRole('link', { name: '全部工具', exact: true }).click();
   await page.getByRole('textbox', { name: '搜索工具' }).fill('双语');
   await expect(page.getByRole('heading', { name: '双语字幕合并' })).toBeVisible();
@@ -23,14 +23,20 @@ test('navigation, responsive layout, search, themes and persisted settings', asy
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.screenshot({ path: 'docs/screenshots/settings-dark.png', fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: testInfo.outputPath('settings-dark.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 900, height: 620 });
   await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 900);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.getByRole('button', { name: '跟随系统' }).click();
+  await page.getByRole('button', { name: '保存设置' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('link', { name: '批量处理', exact: true }).click();
   await expect(page.getByRole('heading', { name: '批量处理', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
-test('replace preview, export actual bytes and persist metadata history', async ({ page }) => {
+test('replace preview, export actual bytes and persist metadata history', async ({ page }, testInfo) => {
   await page.goto('/#/tools/replace');
   await importFiles(page);
   await page.getByLabel('查找内容', { exact: true }).fill('Hello');
@@ -38,7 +44,7 @@ test('replace preview, export actual bytes and persist metadata history', async 
   await page.getByRole('button', { name: '预览处理结果', exact: true }).click();
   await expect(page.locator('.task-row .status-badge')).toHaveText('已处理');
   await expect(page.locator('.preview-grid').getByText('你好 again', { exact: true })).toBeVisible();
-  await page.locator('.results-panel').screenshot({ path: 'docs/screenshots/replace-preview.png', animations: 'disabled' });
+  await page.locator('.results-panel').screenshot({ path: testInfo.outputPath('replace-preview.png'), animations: 'disabled' });
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: '另存为', exact: true }).click();
   const download = await downloadPromise;
