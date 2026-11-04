@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from 'react';
-import { formatTimestamp, type SubtitleCue } from '../core';
+import { formatTimestamp } from '../core/time';
+import type { SubtitleCue } from '../core/models';
 import { buildSubtitleDiff, type CueDiffRow } from '../core/diff/subtitle-diff';
 import { diffCueText, type TextDiffSegment } from '../core/diff/text-diff';
 import { EmptyState, NoticeBox } from './common';

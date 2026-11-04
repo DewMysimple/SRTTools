@@ -4,7 +4,7 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   outputDirectory: string;
   fileNamePattern: string;
-  outputEncoding: 'utf-8' | 'utf-8-bom' | 'utf-16le' | 'utf-16be';
+  outputEncoding: 'utf-8' | 'utf-8-bom' | 'utf-16le' | 'utf-16be' | 'gbk' | 'gb18030';
   lineEnding: 'LF' | 'CRLF';
   autoOpenDirectory: boolean;
   showPreview: boolean;
@@ -28,7 +28,7 @@ function normalizeSettings(value: unknown): AppSettings {
     outputDirectory: typeof raw.outputDirectory === 'string' ? raw.outputDirectory : '',
     fileNamePattern: typeof raw.fileNamePattern === 'string' && raw.fileNamePattern.trim()
       ? raw.fileNamePattern : defaultSettings.fileNamePattern,
-    outputEncoding: raw.outputEncoding === 'utf-8-bom' || raw.outputEncoding === 'utf-16le' || raw.outputEncoding === 'utf-16be'
+    outputEncoding: raw.outputEncoding === 'utf-8-bom' || raw.outputEncoding === 'utf-16le' || raw.outputEncoding === 'utf-16be' || raw.outputEncoding === 'gbk' || raw.outputEncoding === 'gb18030'
       ? raw.outputEncoding : 'utf-8',
     lineEnding: raw.lineEnding === 'LF' ? 'LF' : 'CRLF',
     autoOpenDirectory: raw.autoOpenDirectory === true,

@@ -71,8 +71,14 @@ describe('settings persistence', () => {
   });
 
   it('normalizes unknown stored fields without accepting wrong types', async () => {
-    storage.set('subtitle-tools:settings', JSON.stringify({ theme: 'unknown', autoOpenDirectory: 'yes', outputEncoding: 'gbk', showPreview: false }));
+    storage.set('subtitle-tools:settings', JSON.stringify({ theme: 'unknown', autoOpenDirectory: 'yes', outputEncoding: 'unsupported', showPreview: false }));
     expect(await loadSettings()).toEqual({ ...defaultSettings, showPreview: false });
+  });
+
+  it.each(['gbk', 'gb18030'] as const)('persists explicit %s without changing Unicode defaults', async outputEncoding => {
+    expect(defaultSettings.outputEncoding).toBe('utf-8');
+    await saveSettings({ ...defaultSettings, outputEncoding });
+    expect((await loadSettings()).outputEncoding).toBe(outputEncoding);
   });
 
   it('reports damaged storage rather than swallowing errors', async () => {

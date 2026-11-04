@@ -21,6 +21,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@kayahr/text-encoding": "2.2.0",
     "@tauri-apps/api": "2.12.4",
     "jszip": "3.10.1",
     "lucide-react": "1.67.0",

@@ -375,7 +375,7 @@ describe('encoding integrity', () => {
     expect(() => decodeBytes(gbk)).toThrow('手动选择');
     expect(decodeBytes(gbk, 'GBK').text).toBe('中文');
     expect(decodeBytes(new Uint8Array([0x94, 0x39, 0xfc, 0x36]), 'GB18030').text).toBe('😀');
-    expect(() => encodeText('中文', 'GBK')).toThrow('暂不支持无损导出');
+    expect(encodeText('中文', 'GBK')).toEqual(gbk);
   });
   it('reports preexisting Unicode replacement characters in UTF-8 without BOM, plus NUL after a manual override', () => {
     expect(decodeBytes(new TextEncoder().encode('already damaged �')).warnings.join()).toContain('替代字符');

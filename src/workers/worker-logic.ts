@@ -1,8 +1,8 @@
 import {
   bilingualMerge, compareDocuments, decodeBytes, encodeText, mergeDocuments,
-  parseSubtitle, processDocument, serializeSubtitle, SubtitleError,
+  parseSubtitle, processDocument, serializeSubtitle, StrictEncodingError, SubtitleError,
 } from '../core';
-import type { ParseDiagnostic, SubtitleDocument } from '../core';
+import type { ParseDiagnostic, SubtitleCue, SubtitleDocument } from '../core';
 import { safeFileName, uniqueOutputNames } from '../services/export-service';
 import type { ImportedFile } from '../services/file-service';
 import type { ProcessedOutput, ProcessedTask, ProcessingOptions, ProcessingRequest } from '../services/processing-service';
@@ -76,7 +76,34 @@ function stats(document: SubtitleDocument) {
 
 function reportOutput(fileName: string, payload: unknown, options: ProcessingOptions, inputIndex = 1): ProcessedOutput {
   const text = JSON.stringify(payload, null, 2).replace(/\n/gu, options.lineEnding === 'CRLF' ? '\r\n' : '\n');
-  return { name: outputName(fileName, 'json', options, inputIndex), text, bytes: encodeText(text, options.outputEncoding) };
+  const name = outputName(fileName, 'json', options, inputIndex);
+  return { name, text, bytes: encodeOutput(text, options.outputEncoding, name) };
+}
+
+function encodeOutput(text: string, encoding: string, fileName: string, cues?: readonly SubtitleCue[]): Uint8Array {
+  if (/^gb(?:k|18030)$/iu.test(encoding.replace(/[\s_-]/gu, ''))) {
+    for (const cue of cues ?? []) {
+      try { encodeText(cue.text, encoding); }
+      catch (error) {
+        if (!(error instanceof StrictEncodingError)) throw error;
+        throw new SubtitleError(error.code, `第 ${cue.index} 条字幕：${error.message}`);
+      }
+    }
+  }
+  try {
+    return encodeText(text, encoding);
+  } catch (error) {
+    if (!(error instanceof StrictEncodingError)) throw error;
+    let location = '输出头部或报告元数据';
+    if (!fileName.toLowerCase().endsWith('.json')) {
+      try {
+        const parsed = parseSubtitle(text, fileName, { captureBodies: true });
+        const position = parsed.bodySpans?.findIndex(span => error.offset >= span.start && error.offset < span.end) ?? -1;
+        if (position >= 0) location = `第 ${parsed.document.cues[position].index} 条字幕`;
+      } catch { /* Plain TXT output has no subtitle timing structure. */ }
+    }
+    throw new SubtitleError(error.code, `${location}：${error.message}`);
+  }
 }
 
 function assertCanExport(input: ImportedDocument, operation: string): void {
@@ -101,10 +128,11 @@ function serializeDocuments(documents: SubtitleDocument[], options: ProcessingOp
   const outputs = documents.map((document): ProcessedOutput => {
     const result = serializeSubtitle(document, document.format, options.lineEnding);
     diagnostics.push(...result.warnings.map((message): ParseDiagnostic => ({ severity: 'warning', code: 'LOSSY_CONVERSION', message })));
+    const name = outputName(document.fileName, document.format, options, inputIndex);
     return {
-      name: outputName(document.fileName, document.format, options, inputIndex),
+      name,
       text: result.text,
-      bytes: encodeText(result.text, options.outputEncoding),
+      bytes: encodeOutput(result.text, options.outputEncoding, name, result.previewCues ?? document.cues),
       document: result.previewCues && { ...document, cues: result.previewCues, lineEnding: options.lineEnding },
     };
   });
@@ -136,10 +164,11 @@ function executeFile(request: ProcessingRequest, task: ProcessedTask): Processed
     const result = convertChineseSubtitle(input.sourceText!, {
       document: input.document, diagnostics: input.diagnostics, bodySpans: input.bodySpans,
     }, direction);
+    const name = outputName(file.name, input.document.format, request.options, inputIndex);
     task.outputs = [{
-      name: outputName(file.name, input.document.format, request.options, inputIndex),
+      name,
       text: result.text,
-      bytes: encodeText(result.text, request.options.outputEncoding),
+      bytes: encodeOutput(result.text, request.options.outputEncoding, name, result.document.cues),
       document: result.document,
     }];
     task.diagnostics = task.diagnostics.filter(diagnostic => diagnostic.code !== 'LOSSY_ASS' && diagnostic.code !== 'LOSSY_VTT')
