@@ -33,6 +33,42 @@ describe('subtitle diff alignment', () => {
     expect(result.summary).toMatchObject({ affected: 4, textChanged: 2, timeChanged: 2, indexChanged: 2 });
   });
 
+  it('applies inclusive time tolerance only to confirmed pairs and keeps other changes', () => {
+    const before = [cue(1), cue(2), cue(3)];
+    const after = [
+      { ...before[0], startMs: 1050, endMs: 1450 },
+      { ...before[1], startMs: 2050, endMs: 2551 },
+      { ...before[2], startMs: 3050, text: '正文变化', index: 8 },
+    ];
+    const result = buildSubtitleDiff(before, after, { trustIds: true, timeToleranceMs: 50 });
+    expect(result.kind).toBe('aligned');
+    if (result.kind !== 'aligned') return;
+    expect(result.rows.map(row => row.kind)).toEqual(['unchanged', 'time-changed', 'mixed-changed']);
+    expect(result.summary).toMatchObject({ affected: 2, timeChanged: 1, textChanged: 1, indexChanged: 1 });
+    expect(compare(before, after).summary.timeChanged).toBe(3);
+
+    // Tolerance is a classification threshold, not evidence for pairing independent cues.
+    const unrelated = [{ ...before[0], text: '另一来源', startMs: 1010, endMs: 1510 }];
+    const independent = buildSubtitleDiff([before[0]], unrelated, { timeToleranceMs: 50 });
+    expect(independent.kind === 'aligned' && independent.summary).toMatchObject({ ambiguous: 2, timeChanged: 0 });
+  });
+
+  it('retains strict inequality for nonfinite times even with a time tolerance', () => {
+    const before = [
+      { ...cue(1), startMs: NaN },
+      { ...cue(2), startMs: Infinity },
+      { ...cue(3), endMs: -Infinity },
+    ];
+    const after = before.map(item => ({ ...item }));
+    after[2].endMs = Infinity;
+    const result = buildSubtitleDiff(before, after, { trustIds: true, timeToleranceMs: 100 });
+    expect(result.kind === 'aligned' && result.rows.map(row => row.timeChanged)).toEqual([true, false, true]);
+  });
+
+  it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid time tolerance %s', timeToleranceMs => {
+    expect(() => buildSubtitleDiff([], [], { timeToleranceMs })).toThrow();
+  });
+
   it('keeps a middle deletion and insertion separate from their neighbors', () => {
     const before = [cue(1), cue(2), cue(3), cue(4)];
     const added = { ...cue(5), index: 3 };

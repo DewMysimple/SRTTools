@@ -25,6 +25,9 @@ export interface ProcessedTask {
   inputSize: number;
   status: TaskStatus;
   document?: SubtitleDocument;
+  /** Independent input snapshots for visual comparison only; never persisted in reports or history. */
+  comparison?: { before: SubtitleDocument; after: SubtitleDocument; toleranceMs: number };
+  comparisonUnavailable?: 'input-errors' | 'uncertain-encoding';
   diagnostics: ParseDiagnostic[];
   inputDiagnostics?: ParseDiagnostic[];
   outputs: ProcessedOutput[];

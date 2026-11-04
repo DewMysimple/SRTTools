@@ -9,6 +9,7 @@ import type { ProcessedOutput, ProcessedTask, ProcessingOptions, ProcessingReque
 import { validateFileNamePattern } from '../services/settings-service';
 import { convertChineseSubtitle } from '../core/chinese-subtitle';
 import type { SubtitleBodySpan } from '../core/parser';
+import { buildSubtitleDiff } from '../core/diff/subtitle-diff';
 
 interface ImportedDocument {
   document: SubtitleDocument;
@@ -225,9 +226,21 @@ function executeCombined(request: ProcessingRequest, task: ProcessedTask): Proce
     if (!Number.isSafeInteger(toleranceMs) || toleranceMs < 0) throw new SubtitleError('INVALID_PARAMS', '时间容差必须是非负整数毫秒。');
     task.diagnostics.push(...compareDocuments(inputs[0].document, inputs[1].document, toleranceMs));
     task.summary = `对比完成，共 ${task.diagnostics.length} 条问题或差异`;
+    const [before, after] = inputs.map(input => input.document);
+    const unavailable = inputs.some(input => input.diagnostics.some(diagnostic => diagnostic.severity === 'error'))
+      ? 'input-errors' : inputs.some(input => input.uncertainEncoding) ? 'uncertain-encoding' : undefined;
+    const logical = unavailable ? undefined : buildSubtitleDiff(before.cues, after.cues, { trustIds: false, timeToleranceMs: toleranceMs });
+    const visualComparison = !logical
+      ? { mode: 'logical', timeToleranceMs: toleranceMs, kind: 'unavailable', reason: unavailable }
+      : logical.kind === 'aligned'
+      ? { mode: 'logical', timeToleranceMs: toleranceMs, kind: logical.kind, summary: logical.summary }
+      : { mode: 'logical', timeToleranceMs: toleranceMs, kind: logical.kind, beforeCount: logical.beforeCount, afterCount: logical.afterCount, reason: logical.reason };
     task.outputs = [reportOutput('comparison.json', {
       files: inputs.map((input) => stats(input.document)), summary: task.summary, diagnostics: task.diagnostics,
+      visualComparison,
     }, request.options)];
+    if (unavailable) task.comparisonUnavailable = unavailable;
+    else task.comparison = { before, after, toleranceMs };
     return { ...task, status: 'success' };
   }
   inputs.forEach((input, index) => {

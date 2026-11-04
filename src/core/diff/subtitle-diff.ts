@@ -35,6 +35,12 @@ export type SubtitleDiff =
   | { kind: 'aligned'; rows: CueDiffRow[]; summary: CueDiffSummary }
   | { kind: 'fallback'; beforeCount: number; afterCount: number; reason: 'size-limit' };
 
+export interface SubtitleDiffOptions {
+  trustIds?: boolean;
+  /** Inclusive classification threshold; does not supply evidence for cue matching. */
+  timeToleranceMs?: number;
+}
+
 const MAX_COMBINED_CUES = 10_000;
 const MAX_COMBINED_TEXT_UNITS = 2_000_000;
 const LOCAL_WINDOW = 12;
@@ -235,9 +241,11 @@ function ambiguity(left: readonly SubtitleCue[], right: readonly SubtitleCue[], 
 
 function pairedRow(
   key: string, before: SubtitleCue, after: SubtitleCue, matchConfidence: MatchConfidence, reordered: boolean,
+  timeToleranceMs: number,
 ): CueDiffRow {
   const textChanged = before.text !== after.text;
-  const timeChanged = before.startMs !== after.startMs || before.endMs !== after.endMs;
+  const timeChanged = timeChangedBeyondTolerance(before.startMs, after.startMs, timeToleranceMs)
+    || timeChangedBeyondTolerance(before.endMs, after.endMs, timeToleranceMs);
   const indexChanged = before.index !== after.index;
   const changes = Number(textChanged) + Number(timeChanged) + Number(indexChanged);
   let kind: CueChangeType;
@@ -249,6 +257,12 @@ function pairedRow(
   return { key, before, after, kind, textChanged, timeChanged, indexChanged, reordered, matchConfidence };
 }
 
+function timeChangedBeyondTolerance(before: number, after: number, toleranceMs: number): boolean {
+  return Number.isFinite(before) && Number.isFinite(after)
+    ? Math.abs(before - after) > toleranceMs
+    : before !== after;
+}
+
 function singleRow(key: string, cue: SubtitleCue, side: 'before' | 'after', ambiguous: boolean): CueDiffRow {
   return {
     key, [side]: cue, kind: ambiguous ? 'unmatched' : side === 'before' ? 'removed' : 'added',
@@ -256,7 +270,7 @@ function singleRow(key: string, cue: SubtitleCue, side: 'before' | 'after', ambi
   };
 }
 
-function buildRows(before: readonly SubtitleCue[], after: readonly SubtitleCue[], pairs: Pairs, trustIds: boolean) {
+function buildRows(before: readonly SubtitleCue[], after: readonly SubtitleCue[], pairs: Pairs, trustIds: boolean, timeToleranceMs: number) {
   const uncertain = ambiguity(before, after, pairs, trustIds);
   const reordered = reorderedRows(pairs.afterByBefore);
   const removedBeforeNextPair = new Map<number, CueDiffRow[]>();
@@ -278,7 +292,7 @@ function buildRows(before: readonly SubtitleCue[], after: readonly SubtitleCue[]
     const partner = pairs.beforeByAfter[index];
     rows.push(partner < 0
       ? singleRow(`after-${index}`, cue, 'after', uncertain.after[index] === 1)
-      : pairedRow(`before-${partner}`, before[partner], cue, pairs.confidence[partner], reordered[partner] === 1));
+      : pairedRow(`before-${partner}`, before[partner], cue, pairs.confidence[partner], reordered[partner] === 1, timeToleranceMs));
   });
   rows.push(...pending);
   return rows;
@@ -317,8 +331,11 @@ function exceedsBudget(before: readonly SubtitleCue[], after: readonly SubtitleC
 
 /** Compare immutable cue snapshots. Enable ID matching only with confirmed shared provenance. */
 export function buildSubtitleDiff(
-  before: readonly SubtitleCue[], after: readonly SubtitleCue[], { trustIds = false } = {},
+  before: readonly SubtitleCue[], after: readonly SubtitleCue[], { trustIds = false, timeToleranceMs = 0 }: SubtitleDiffOptions = {},
 ): SubtitleDiff {
+  if (!Number.isSafeInteger(timeToleranceMs) || timeToleranceMs < 0) {
+    throw new RangeError('时间容差必须是非负整数毫秒。');
+  }
   if (exceedsBudget(before, after)) {
     return { kind: 'fallback', beforeCount: before.length, afterCount: after.length, reason: 'size-limit' };
   }
@@ -331,6 +348,6 @@ export function buildSubtitleDiff(
   matchUnique(before, after, pairs, contentKey, 'anchored');
   const gaps = orderedGaps(pairs);
   if (gaps) for (const gap of gaps) matchLocal(before, after, pairs, gap);
-  const rows = buildRows(before, after, pairs, trustIds);
+  const rows = buildRows(before, after, pairs, trustIds, timeToleranceMs);
   return { kind: 'aligned', rows, summary: summarize(rows, before.length, after.length) };
 }

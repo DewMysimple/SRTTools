@@ -159,7 +159,8 @@ function ResultDetails({ task, combined, showPreview, onToggle }: { task: Proces
   if (task.status === 'cancelled') return <NoticeBox>处理已取消，没有可预览的结果。</NoticeBox>;
   return <div className="result-details">
     {task.errorMessage && <NoticeBox kind="error">{task.errorMessage}<details><summary>查看错误详情</summary><code>{task.errorCode ?? 'PROCESSING_FAILED'}</code></details></NoticeBox>}
-    {task.document && <div className="document-meta">
+    {task.comparisonUnavailable && <NoticeBox kind="warning">{task.comparisonUnavailable === 'input-errors' ? '源文件存在解析错误，逻辑对比暂不可用。请先根据诊断修正源文件，仍可导出诊断报告。' : '输入编码尚未确认，逻辑对比暂不可用。请核对原文并手动选择输入编码。'}</NoticeBox>}
+    {task.comparison ? <div className="document-meta"><span>第一份 {task.comparison.before.cues.length} 条字幕</span><span>第二份 {task.comparison.after.cues.length} 条字幕</span><span>时间容差 {task.comparison.toleranceMs} 毫秒</span></div> : task.document && <div className="document-meta">
       <span>输入 {task.document.cues.length} 条字幕</span><span>{task.document.encoding.toUpperCase()}</span><span>{task.document.lineEnding}</span>
       {output?.document && <span>输出 {output.document.cues.length} 条字幕</span>}
     </div>}
@@ -172,7 +173,11 @@ function ResultDetails({ task, combined, showPreview, onToggle }: { task: Proces
       <div className="section-heading preview-heading"><h3>处理预览 <span className="muted">每页最多 {PREVIEW_PAGE_SIZE} 条</span></h3><button className="text-button" aria-expanded={showPreview} onClick={onToggle}>{showPreview ? '收起预览' : '查看预览'}<ChevronDown size={14} /></button></div>
       {showPreview && <>
         {task.outputs.length > 1 && <div className="field"><label htmlFor="preview-output">预览输出文件</label><select id="preview-output" value={outputIndex} onChange={e => setOutputIndex(Number(e.target.value))}>{task.outputs.map((o, i) => <option value={i} key={i}>{o.name}</option>)}</select></div>}
-        <PreviewPanel key={outputIndex} input={task.document} output={output} combined={combined} partialOutput={task.outputs.length > 1} />
+        {task.comparison ? <>
+          <NoticeBox>原有列表对比按条目位置比较，允许的时间差为 {task.comparison.toleranceMs} 毫秒。{task.summary}。下方按正文与时间证据显示逻辑差异，编号与顺序另行标记。</NoticeBox>
+          <SubtitleDiffPreview before={task.comparison.before.cues} after={task.comparison.after.cues} partialOutput={false} trustIds={false} timeToleranceMs={task.comparison.toleranceMs} documentComparison beforeLabel={`第一份 · ${task.comparison.before.fileName}`} afterLabel={`第二份 · ${task.comparison.after.fileName}`} />
+          {output && <details className="comparison-report"><summary>查看 JSON 差异报告</summary><pre className="text-preview">{output.text.slice(0, 12_000)}{output.text.length > 12_000 && '\n… 预览已截断，导出包含完整报告。'}</pre></details>}
+        </> : <PreviewPanel key={outputIndex} input={task.document} output={output} combined={combined} partialOutput={task.outputs.length > 1} />}
       </>}
     </>}
   </div>;
