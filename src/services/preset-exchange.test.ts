@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 const native = vi.hoisted(() => ({ enabled: false, invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => native.enabled, invoke: native.invoke }));
@@ -25,6 +25,7 @@ const encoded = (value: unknown) => new TextEncoder().encode(JSON.stringify(valu
 const exchange = (items: unknown[], extra: object = {}) => encoded({ format: 'srttools-presets', schemaVersion: 1, exportedAt: date, appVersion: '0.4.0', items, ...extra });
 const rawSnapshot = () => [localStorage.getItem(toolKey), localStorage.getItem(workflowKey), localStorage.getItem('subtitle-tools:settings'), localStorage.getItem('subtitle-tools:history')];
 beforeEach(() => { localStorage.clear(); native.enabled = false; native.invoke.mockReset(); });
+afterEach(() => vi.useRealTimers());
 
 describe('safe preset exchange', () => {
   it('imports the documented complete example as a validated four-step workflow', async () => {
@@ -90,6 +91,85 @@ describe('safe preset exchange', () => {
     if (strategy === 'skip') { expect(result).toEqual([preset]); expect(rawSnapshot()).toEqual(before); }
     else if (strategy === 'rename') expect(result.map(p => p.name).sort()).toEqual(['同名', '同名 (2)'].sort());
     else expect(result).toMatchObject([{ id: preset.id, parameters: { replacement: '新值' } }]);
+  });
+
+  it.each([
+    ['2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'],
+    ['9999-12-31T23:59:59.998Z', '9999-12-31T23:59:59.999Z'],
+  ])('keeps future-dated tool and workflow overwrites readable without advancing past %s / %s', async (createdAt, updatedAt) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(date));
+    const oldTool = { ...legacy, name: '合法旧预设', parameters: replacement, createdAt, updatedAt };
+    const oldFlow = { schemaVersion: 1, id: crypto.randomUUID(), name: '合法旧流程', description: '原描述',
+      steps: [createWorkflowStep('remove-empty')], lossyMode: 'reject', createdAt, updatedAt };
+    localStorage.setItem(toolKey, JSON.stringify({ schemaVersion: 1, presets: [oldTool] }, null, 2));
+    localStorage.setItem(workflowKey, JSON.stringify({ schemaVersion: 1, presets: [oldFlow] }, null, 3));
+    localStorage.setItem('subtitle-tools:settings', '{ "theme" : "dark" }');
+    localStorage.setItem('subtitle-tools:history', '[ { "id" : "keep exact bytes" } ]');
+    const before = rawSnapshot();
+    expect(await listPresets('replace')).toMatchObject({ presets: [oldTool], ignoredCount: 0 });
+    expect(await listWorkflowPresets()).toMatchObject({ presets: [oldFlow], quarantined: [], readOnly: false });
+    const incomingTool = { kind: 'tool', ...oldTool, id: crypto.randomUUID(), parameters: { ...replacement, replacement: '覆盖后的参数' } };
+    const incomingFlow = { kind: 'workflow', ...oldFlow, id: crypto.randomUUID(), description: '覆盖后的描述',
+      steps: [{ ...createWorkflowStep('shift'), params: { offsetMs: 500, policy: 'reject' } }] };
+    const plan = await previewPresetImport(exchange([incomingTool, incomingFlow]), 'overwrite');
+    expect(plan).toMatchObject({ importCount: 2, conflicts: 2, incompatible: 0, requiresOverwriteConfirmation: true });
+    expect(rawSnapshot()).toEqual(before);
+    await expect(confirmPresetImport(plan, { overwriteConfirmed: true })).resolves.toEqual({ imported: 2, skipped: 0 });
+    const toolResult = await listPresets('replace');
+    const flowResult = await listWorkflowPresets();
+    expect(toolResult).toMatchObject({ ignoredCount: 0, presets: [{ ...oldTool, parameters: incomingTool.parameters }] });
+    expect(toolResult.presets).toHaveLength(1);
+    expect(flowResult).toMatchObject({ quarantined: [], readOnly: false, presets: [{ id: oldFlow.id, name: oldFlow.name,
+      description: incomingFlow.description, lossyMode: oldFlow.lossyMode, createdAt, updatedAt,
+      steps: [{ operation: 'shift', enabled: true, params: { offsetMs: 500, policy: 'reject' } }] }] });
+    expect(flowResult.presets).toHaveLength(1);
+    expect(flowResult.presets[0].steps[0].id).not.toBe(incomingFlow.steps[0].id);
+    expect(rawSnapshot().slice(2)).toEqual(before.slice(2));
+    const exported = JSON.parse(new TextDecoder().decode(await exportPresetSelection({ toolIds: [oldTool.id], workflowIds: [oldFlow.id] }, date)));
+    expect(exported.items).toHaveLength(2);
+    expect(exported.items.every((item: { createdAt: string; updatedAt: string }) => item.createdAt === createdAt && item.updatedAt === updatedAt)).toBe(true);
+  });
+
+  it.each(['skip', 'rename'] as const)('keeps %s semantics with valid UTC-9999 presets after a clock correction', async strategy => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(date));
+    const future = '9999-12-31T23:59:59.999Z';
+    const oldTool = { ...legacy, parameters: replacement, createdAt: future, updatedAt: future };
+    const oldFlow = { schemaVersion: 1, id: crypto.randomUUID(), name: '未来流程', description: '',
+      steps: [createWorkflowStep('clean-spaces')], lossyMode: 'reject', createdAt: future, updatedAt: future };
+    localStorage.setItem(toolKey, JSON.stringify({ schemaVersion: 1, presets: [oldTool] }, null, 2));
+    localStorage.setItem(workflowKey, JSON.stringify({ schemaVersion: 1, presets: [oldFlow] }, null, 3));
+    const before = rawSnapshot();
+    const incoming = [{ kind: 'tool', ...oldTool, id: crypto.randomUUID() }, { kind: 'workflow', ...oldFlow, id: crypto.randomUUID() }];
+    const plan = await previewPresetImport(exchange(incoming), strategy);
+    await confirmPresetImport(plan, { overwriteConfirmed: false });
+    const tools = await listPresets('replace');
+    const flows = await listWorkflowPresets();
+    expect(tools.ignoredCount).toBe(0); expect(flows.quarantined).toEqual([]);
+    if (strategy === 'skip') {
+      expect(rawSnapshot()).toEqual(before); expect(tools.presets).toEqual([oldTool]); expect(flows.presets).toEqual([oldFlow]);
+    } else {
+      expect(tools.presets).toHaveLength(2); expect(flows.presets).toHaveLength(2);
+      expect(tools.presets.find(item => item.id === oldTool.id)).toEqual(oldTool);
+      expect(flows.presets.find(item => item.id === oldFlow.id)).toEqual(oldFlow);
+      expect(tools.presets.find(item => item.id !== oldTool.id)).toMatchObject({ name: `${oldTool.name} (2)`, createdAt: date, updatedAt: date });
+      expect(flows.presets.find(item => item.id !== oldFlow.id)).toMatchObject({ name: `${oldFlow.name} (2)`, createdAt: date, updatedAt: date });
+    }
+  });
+
+  it('uses the current clock for newly imported items instead of inheriting external future timestamps', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(date));
+    const future = '9999-12-31T23:59:59.999Z';
+    const tool = { kind: 'tool', ...legacy, parameters: replacement, createdAt: future, updatedAt: future };
+    const flow = { kind: 'workflow', schemaVersion: 1, id: crypto.randomUUID(), name: '新流程', description: '',
+      steps: [createWorkflowStep('clean-spaces')], lossyMode: 'reject', createdAt: future, updatedAt: future };
+    const plan = await previewPresetImport(exchange([tool, flow]), 'overwrite');
+    expect(plan.requiresOverwriteConfirmation).toBe(false);
+    await confirmPresetImport(plan, { overwriteConfirmed: false });
+    expect(await listPresets('replace')).toMatchObject({ ignoredCount: 0, presets: [{ name: tool.name, parameters: replacement, createdAt: date, updatedAt: date }] });
+    expect(await listWorkflowPresets()).toMatchObject({ quarantined: [], presets: [{ name: flow.name, createdAt: date, updatedAt: date }] });
   });
 
   it('handles same-name workflow imports, regenerates external IDs and retains isolated raw rows', async () => {

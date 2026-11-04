@@ -215,8 +215,13 @@ export async function previewPresetImport(bytes: Uint8Array, strategy: PresetCon
       overwritten ||= replace;
       const { kind: _kind, ...source } = item;
       void _kind;
+      // A corrected system clock must not make a previously valid local preset unreadable.
+      // Keep timestamps nondecreasing without adding a millisecond beyond the UTC-9999 limit.
+      const updatedAt = replace
+        ? new Date(Math.max(Date.parse(now), Date.parse(existing!.createdAt), Date.parse(existing!.updatedAt))).toISOString()
+        : now;
       const local = { ...source, id: replace ? existing!.id : crypto.randomUUID(), name,
-        createdAt: replace ? existing!.createdAt : now, updatedAt: now };
+        createdAt: replace ? existing!.createdAt : now, updatedAt };
       if (kind === 'tool') {
         const preset = local as ToolPreset;
         if (replace) {
