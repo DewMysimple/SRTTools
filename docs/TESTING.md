@@ -2,7 +2,7 @@
 
 v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [发布检查表](RELEASE_CHECKLIST_v0.1.1.md)。回归夹具位于 [examples/回归](../examples/回归)，包含 UTF-8 BOM、GBK CRLF、Unicode 文件名、重复编号和损坏时间行。Playwright 将本次运行的截图留在 `test-results/`。
 
-## v0.3.0 本轮验证（2026-11-04，最终发布验收中）
+## v0.3.0 本轮验证（2026-11-04）
 
 合并前 `origin/main=123eb499336f4f571c4ecf41f5fbe47da4223640`，开发分支与快进目标 `f5c92e6afc056bee0dbeae052caa15f0bf70b226`，推送后已核实主线包含 v0.2.0。阶段提交为 `a67fab9`（发布）、`d2a68a1`（简繁）、`fd614b8`（严格编码）、`81e5cb4`（目录导入）。当前版本清单均为 0.3.0。环境仍为本机 Win11 Pro 25H2 26200.9711、x64、96 DPI / 100%、WebView2 156.0.4314.58、Node24.16/npm12.0.1、Rust1.97 MSVC。
 
@@ -16,11 +16,45 @@ v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [
 | Gate 4 目录 | PASS：4 队列回归、9 目录合同/视觉/键盘、原生 13 项，真实读取中取消后重试；24 Rust 已分阶段通过，Clippy PASS |
 | Gate 5 对比与批量预设 | PASS：228 Vitest（含新增核心/Worker），独立对比 10 E2E、批量预设 3 E2E，原有 9 spec 共 53 Chromium PASS（44.8 秒） |
 | Gate 5 Explorer 与桌面交互 | PARTIAL：14 项原生 PASS（注册/ACL/冷暖/忙碌/无效输入/ZIP/启停/更新/路径/卸载/物理拖放/对比/批量），实际菜单显示与点击导入 BLOCKED，默认关闭的实验入口；原 Store/注册表恢复 true |
-| Gate 6 最终发布重复构建/故障保护/原生全回归 | 待当前最终验收；结果和最后产物 SHA 将在完成后写入本节 |
+| 托管 CI | PASS：[4feb035 的 Actions](https://github.com/DewMysimple/SRTTools/actions/runs/41795341222)，Ubuntu 前端/Chromium和Windows Rust两job实际success |
+| 最终质量门槛 | PASS：lint/typecheck/build、12 发布安全测试、231 Vitest、27 Rust、严格 Clippy、57 Chromium；在三轮完整发布中分别通过 |
+| Firefox 157.0 | PASS：全量 56/56（47.2 秒，4411fb8）；后续仅改测试 mock，Explorer 专项 4/4（4.5 秒，4feb035） |
+| Gate 6 两次正式发布 | PASS：同一干净提交 4feb035，两次 `release:win` + `release:verify`，真实 Tauri NSIS 构建、ZIP 清单/解压/实际 UIA 导入处理导出均通过 |
+| Gate 6 故障保留 | PASS：第三轮全部检查/真实构建/解压冒烟后 `--simulate-failure=before-publish` 按预期 exit 1；第二轮六文件哈希和 manifest 逐字节不变，之后 verify PASS |
+| 最终固定 Setup 安装验收 | PASS：16 项均 true，实际安装/0.3.0/许可/菜单默认关闭/启动/系统导入/处理/真实导出/源保护/卸载/Store 与注册表恢复/无进程无安装注册/测试目录清理 |
 
 原生 Gate3/Gate4 每项内容、合成文件数量、构建 SHA 与校验值见[逐阶段审阅](REVIEW_v0.2.0_to_v0.3.0.md)。目录 E2E 使用模拟 Tauri 合同，不能替代 Windows 真对话框；独立对比和编码 E2E 均运行真实 Worker。曾发现且已回归修复：Node 后台 UIA 隐藏/前台限制、JS Unicode 扩张误去重、损坏/未确认编码输入被错误显示为删除。初次失败记录保留在审阅摘要，不伪称这些尝试 PASS。
 
 Windows10、125%/150%/200%DPI、无 WebView2 干净系统、超过 MAX_PATH 的系统对话框仍无对应可交互环境，标为 NOT_RUN；Rust 超长路径、当前 Win11 实际 Unicode 路径与限额测试独立列证据。安装包未签名，不将这些缺口改写为兼容性通过。
+
+### 最终构建与本地产物
+
+产品与测试源码提交为 `4feb035c2837eeb71b8fcaf822811d1cccea4a0c`，2026-11-04 已推送并通过 `git ls-remote` 核对 `origin/main`。随后交接提交仅更新普通文档和工程记忆；`release:verify` 通过源码指纹确认其与产物一致。构建清单记录 `dirty: false`、版本 `0.3.0`、指纹 `3BDCBAD3952677CC8FA9783571A1DAD54061C955087A08C218A24B4EFC6AF441`。`npm ci` 安装 268 个包，在 4411fb8 执行；两提交的 npm 清单与锁文件逐字不变。
+
+两次成功的 builtAt 为 `2026-11-04T07:39:45.697Z` / `2026-11-04T07:42:41.984Z`，目录均为六文件，大小为 8,464,740 / 8,464,904 bytes；后者保留为最终交付（8.07 MiB）。时间和 PE/NSIS 打包差异会改变哈希，不声明字节可复现。每轮新候选验证后替换旧目录，不产生版本子目录。
+
+固定目录：`E:\Software Development\SRTTool\release-output`。`SRTTools/` 合计 4,319,549 bytes，其哈希以两个文件及 SHA256SUMS 为准：
+
+| 文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| `SRTTools/subtitle-tools.exe` | 4,305,408 | `72D973D6EABC178DAE87039B14CC1617CCA0B5064119D4CE65DA9DCF5E149128` |
+| `SRTTools/THIRD_PARTY_NOTICES.txt` | 14,141 | `2A0F32D23F15B38196B76C18B58F76B024C5CAB7B8285D431CF86D103726BA89` |
+| `SRTTools.zip` | 2,195,616 | `10094CCC0B8A841B4B2F0724917CB39D70EFF24DC9D31333DAC1A45088220C4E` |
+| `SRTTools-Setup.exe` | 1,945,973 | `3FDBF459632DDD29C4DAC282F088780E3D0164D5872E50C12C0DA8102F3D8D0E` |
+| `build-info.json` | 3,327 | `8D9F39D03D75111CD77DF886C10ED044245C4F11B5C0D34AB74B8BFB2C458EA3` |
+| `SHA256SUMS.txt` | 439 | `DD81EE0619F6FCFA8580041EFE4F0C3449D709F3869CF2C686A6D92A4B400E61` |
+
+实际运行的发布命令为 `npm run release:win`（两次）、`npm run release:verify`、`npm run release:win -- --simulate-failure=before-publish`、`npm run clean:outputs -- --apply`、`npm run disk:report`。故障轮返回 1 是预期验证；其余命令返回 0。失败产生的原始安装器（1,945,713 bytes）和失败摘要（372 bytes）已由白名单清理，managed staging/lock 和原始 NSIS 目录均空，正式交付只有最新一套。开发依赖、Rust debug/release 缓存和用户数据保留。
+
+最终固定 Setup 于 `2026-11-04T07:54:50.5659251Z` 实际验收 PASS（Win11 26200.9711 / WebView2 156.0.4314.58）。安装和卸载均退出 0；16 项检查全部 true，安装目录、快捷方式/卸载项与应用进程无残留，原 Store（2 bytes）和六扩展注册表恢复，恢复文件与测试备份为 0。安装版 EXE SHA-256 为 `5E8F562C9E27226297D189EAAE41D97D5B5FEEA1731B864A6CFE3F81BA1C4FF5`，实际版本 0.3.0；许可文件与上述 portable 资源相同。Tauri 安装 payload 与便携 EXE 分别记录，不声称二者哈希相同。精简机器报告为本地忽略的 `src-tauri/target/gate6-final-setup.json`，调用 tracked `scripts/windows-smoke.ps1` 在实际安装的 EXE 上完成系统选择字幕、处理及另存为。
+
+### 失败诊断与清理边界
+
+首次在 4411fb8 的正式构建通过；第二次真实失败于 Explorer E2E（55/56）。20 次重复为 10 PASS / 10 FAIL。探针证实 React StrictMode 的迟到 inactive 订阅覆盖测试 mock 的单值监听，注销后有效监听收不到 warm 通知；真实 Tauri 支持独立事件 ID，产品代码无需修改。4feb035 将 mock 改为多监听与按 ID 幂等注销，并增加受控响应乱序回归，事件 ID 与回调 ID 分开编号；两相关用例各重复 30 次，共 60/60 PASS，再重启上述三轮完整发布。早期失败没有晋升候选，首套六文件保持不变。
+
+旧 `target/qa-v011` 4,689 files / 368,053,365 bytes、两处失败 native driver 53 files / 6,065,982 bytes、最早 3 个旧安装器 4,147,314 bytes 已受控清除；驱动复用源码保存在 `scripts/`，精简证据保存在本页及审阅文档。
+
+自动审批拒绝了本轮 Firefox 输出（15 files / 279,726 bytes）和根 `test-results/`（16 files / 300,276 bytes）的精确清理，均在 CreateProcess 前返回 `blocked by policy`，没有执行，也没有换工具等价重试。初版遗留 `src-tauri/target/smoke/` 的隔离 WebView QA 缓存与报告（201 files / 11,106,633 bytes）此前也被拒绝清理，保持原状。这些目录不进入发行包；不能把“最新正式产物无历史累积”写成“所有 QA 缓存已清空”。
 
 ## v0.2.0 实际执行结果（2026-11-04）
 
@@ -214,3 +248,6 @@ F5A6CA391992D12F8D38C77044A2D2F6ED7B587E517D3B70948112D983200CCE
 **尚需交互验收：** 原生文件对话框、原生拖放的完整端到端流程，以及干净系统缺少 WebView2 时的引导安装。原生路径授权、范围限制、导入预算、安全写入与冲突保护已经 Rust 单元测试验证，但不把这些测试等同于原生桌面交互验收。本机提升权限环境禁用 WebView2 环境变量远程调试，因此没有执行原生 CDP 截图；没有更改系统策略或给生产程序加入调试参数。
 
 隔离 WebView 测试缓存保留在 `src-tauri/target/smoke/webview-profile/`。自动审批拒绝了对此已校验工程内目录的清理，未提供具体原因；没有改用其他工具绕过拒绝。此目录位于构建忽略目录，不会进入安装包。测试创建的开发服务器已停止。
+
+
+Gate6 自有诊断跟踪已另按冻结 SHA/长度/UTCmtime 清单、无 reparse 和占用检查逐文件清除：24 files、14 个已空目录、5,653,500 bytes，四个 `target/gate6-explorer-*` 自有目录均不存在。此前一次本地校验因时间类型转换在删除前保护退出，核实文件全在后修正 UTC ticks 比较再成功执行；未发生自动审批拒绝，也未碰上述被拒的三个范围。

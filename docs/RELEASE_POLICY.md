@@ -4,7 +4,7 @@
 
 | 路径 | 内容 |
 | --- | --- |
-| `release-output/SRTTools/` | 解压运行文件，包含主程序及其实际引用的本地 DLL |
+| `release-output/SRTTools/` | 解压运行文件，包含主程序、第三方许可文件及实际引用的本地 DLL |
 | `release-output/SRTTools.zip` | 包含顶层 `SRTTools/` 的同内容 ZIP |
 | `release-output/SRTTools-Setup.exe` | Windows x64 NSIS 安装器 |
 | `release-output/SHA256SUMS.txt` | 产物和构建清单的 SHA-256 |
