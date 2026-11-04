@@ -148,11 +148,11 @@ if (args.includes('--check')) {
         const script = kind === 'safety' ? 'windows-qa-safety.test.ps1' : 'windows-state-protection.test.ps1';
         const reportPath = await controlledPath(root, path.join(baseline.target, `${path.basename(stage)}-qa-${kind}.json`));
         if (await exists(reportPath)) throw new Error('A private QA report path already exists; existing evidence was preserved.');
-        const command = ['-NoLogo', '-NoProfile', '-STA', '-File', `scripts/${script}`];
+        const command = ['-NoLogo', '-NoProfile', '-File', `scripts/${script}`];
         const started = Date.now();
-        await run('powershell', [...command, '-ReportPath', reportPath]);
+        await run('pwsh', [...command, '-ReportPath', reportPath]);
         const result = validateWindowsQaReport(JSON.parse(await fs.readFile(reportPath, 'utf8')), kind);
-        checks.push({ command: `powershell ${command.join(' ')}`, status: 'PASS', elapsedMs: Date.now() - started, ...result });
+        checks.push({ command: `pwsh ${command.join(' ')}`, status: 'PASS', elapsedMs: Date.now() - started, ...result });
         await fs.unlink(await controlledPath(root, reportPath));
       }
       await npm(['run', 'test:e2e', '--', '--output', path.join(stage, 'test-results')], {

@@ -92,6 +92,11 @@ function Test-ProbeAlive($Identity) {
   $process=Get-Process -Id $Identity.pid -ErrorAction SilentlyContinue
   [bool]($process -and !$process.HasExited -and $process.StartTime.ToUniversalTime().Ticks -eq [long]$Identity.startUtcTicks)
 }
+function Get-ProbeHash([string] $Path) {
+  $hash=[Security.Cryptography.SHA256]::Create()
+  try { [BitConverter]::ToString($hash.ComputeHash([IO.File]::ReadAllBytes($Path))).Replace('-','') }
+  finally { $hash.Dispose() }
+}
 function Start-ProbeJob([string] $WorkerMode,[string] $Marker,[string] $WorkerToken='') {
   $arguments=@('-NoLogo','-NoProfile','-NonInteractive','-STA','-File',$PSCommandPath,'-Mode',$WorkerMode,'-FixtureRoot',$FixtureRoot,'-MarkerName',$Marker)
   if ($WorkerToken) { $arguments+=@('-Token',$WorkerToken) }
@@ -238,7 +243,7 @@ try {
     $backupPath=Join-Path $case.root 'synthetic-backup.json'; $sentinel=Join-Path $case.root 'sentinel.txt'
     [IO.File]::WriteAllText($backupPath,(ConvertTo-QADataJson $state),$utf8)
     [IO.File]::WriteAllText($sentinel,'do-not-restore-or-clean',$utf8)
-    $backupHash=(Get-FileHash -LiteralPath $backupPath).Hash
+    $backupHash=Get-ProbeHash $backupPath
     $faulty=[pscustomobject]@{stopCalls=0;disposed=$false}
     $faulty|Add-Member ScriptMethod StopAndWait {param($timeout) $this.stopCalls++; return $false}
     $faulty|Add-Member ScriptMethod Dispose {$this.disposed=$true}
@@ -254,7 +259,7 @@ try {
     & $finallyBody
     Assert-Condition ($faulty.stopCalls -eq 1 -and $faulty.disposed -and $report.failureStage -eq 'restoration') 'The real setup finally did not fail at the writer guard.'
     Assert-Condition (!$effects.uninstall -and !$effects.restore -and !$effects.cleanup) 'Setup mutated state after failing to confirm writer termination.'
-    Assert-Condition ((Get-FileHash -LiteralPath $backupPath).Hash -ceq $backupHash -and [IO.File]::ReadAllText($sentinel) -ceq 'do-not-restore-or-clean') 'The retained recovery data changed.'
+    Assert-Condition ((Get-ProbeHash $backupPath) -ceq $backupHash -and [IO.File]::ReadAllText($sentinel) -ceq 'do-not-restore-or-clean') 'The retained recovery data changed.'
   }
   $report.status='PASS'
 } catch { $report.failure=$_.Exception.Message }

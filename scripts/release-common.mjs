@@ -22,7 +22,10 @@ export function validateWindowsQaReport(report, kind) {
   const state = kind === 'state';
   const count = state ? 12 : 10;
   const producer = state ? 'srttools-windows-state-protection-tests-v1' : 'srttools-qa-safety-tests-v1';
+  const powershellVersion = state ? report?.platform?.powershellVersion : report?.powershell;
   if (!['safety', 'state'].includes(kind) || report?.schemaVersion !== 1 || report.producer !== producer
+    || typeof powershellVersion !== 'string' || !/^5\.1(?:\.|$)/u.test(powershellVersion)
+    || state && report.platform?.edition !== 'Desktop'
     || report.status !== 'PASS' || !Array.isArray(report.checks) || report.checks.length !== count
     || !report.checks.every(check => typeof check?.name === 'string' && check.name.length > 0 && check.status === 'PASS')
     || new Set(report.checks.map(check => check.name)).size !== count
@@ -30,7 +33,7 @@ export function validateWindowsQaReport(report, kind) {
       : report.checkCount !== count || report.cleanupComplete !== true || report.fixturePreserved !== null)) {
     throw new Error(`Windows QA ${kind} report is incomplete or failed.`);
   }
-  return { passed: count, failed: 0, fixtureCleanup: true };
+  return { passed: count, failed: 0, fixtureCleanup: true, powershellVersion };
 }
 
 export function inside(root, target) {

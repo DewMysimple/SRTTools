@@ -46,17 +46,17 @@ test('Windows QA gates require every unique check and confirmed fixture cleanup'
       schemaVersion: 1, status: 'PASS',
       producer: kind === 'safety' ? 'srttools-qa-safety-tests-v1' : 'srttools-windows-state-protection-tests-v1',
       checks: Array.from({ length: count }, (_, index) => ({ name: `check-${index}`, status: 'PASS' })),
-      ...(kind === 'safety' ? { checkCount: count, cleanupComplete: true, fixturePreserved: null }
-        : { passed: count, failed: 0, coverage: { fixtureCleanup: true } }),
+      ...(kind === 'safety' ? { checkCount: count, cleanupComplete: true, fixturePreserved: null, powershell: '5.1.26100.9711' }
+        : { passed: count, failed: 0, coverage: { fixtureCleanup: true }, platform: { powershellVersion: '5.1.26100.9711', edition: 'Desktop' } }),
     };
-    assert.deepEqual(validateWindowsQaReport(report, kind), { passed: count, failed: 0, fixtureCleanup: true });
+    assert.deepEqual(validateWindowsQaReport(report, kind), { passed: count, failed: 0, fixtureCleanup: true, powershellVersion: '5.1.26100.9711' });
     const invalid = [
       null, { ...report, producer: 'unknown' }, { ...report, schemaVersion: 2 }, { ...report, status: 'FAIL' },
       { ...report, checks: report.checks.slice(1) },
       { ...report, checks: report.checks.map((check, index) => index === 0 ? { ...check, status: 'FAIL' } : check) },
       { ...report, checks: report.checks.map(check => ({ ...check, name: 'same-check' })) },
-      ...(kind === 'safety' ? [{ ...report, cleanupComplete: false }, { ...report, checkCount: 9 }, { ...report, fixturePreserved: 'retained' }]
-        : [{ ...report, coverage: { fixtureCleanup: false } }, { ...report, passed: 11 }, { ...report, failed: 1 }]),
+      ...(kind === 'safety' ? [{ ...report, cleanupComplete: false }, { ...report, checkCount: 9 }, { ...report, fixturePreserved: 'retained' }, { ...report, powershell: '7.5.0' }]
+        : [{ ...report, coverage: { fixtureCleanup: false } }, { ...report, passed: 11 }, { ...report, failed: 1 }, { ...report, platform: { powershellVersion: '7.5.0', edition: 'Core' } }]),
     ];
     for (const value of invalid) assert.throws(() => validateWindowsQaReport(value, kind), /incomplete or failed/u);
   }
