@@ -19,6 +19,22 @@ function Set-WorkflowField([string] $Name, [string] $Value) {
   elseif ($control.TryGetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern, [ref]$pattern)) { $pattern.SetValue([double]::Parse($Value,[Globalization.CultureInfo]::InvariantCulture)) }
   else { throw ('Editable native field did not expose a supported pattern: ' + $Name) }
 }
+function Read-WorkflowField([string]$Name) {
+  $control=Wait-Condition {$application.FindAll($scope::Descendants,(Condition $element::NameProperty $Name))|Where-Object{$ids=$_.GetSupportedPatterns().Id;$ids -contains [System.Windows.Automation.ValuePattern]::Pattern.Id -or $ids -contains [System.Windows.Automation.RangeValuePattern]::Pattern.Id}|Select-Object -First 1} 'A retained preset field was not readable.'
+  $pattern=$null
+  if($control.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)){return $pattern.Current.Value}
+  $control.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current.Value.ToString([Globalization.CultureInfo]::InvariantCulture)
+}
+function Assert-ExistingWorkflowStateRead {
+  (Get-Control '设置' $types::Hyperlink).GetCurrentPattern($invoke).Invoke()
+  $dark=Get-Control '深色' $types::Button
+  Assert-Condition ($dark.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) 'Existing appearance setting was not loaded by the app.'
+  Open-Tool '整体时间偏移';Select-Option '参数预设' 'Existing Tool Preserve';Click-Control '应用预设'
+  Wait-Condition {(Read-WorkflowField '偏移量（毫秒）') -eq '123'} 'Existing tool preset parameters were not read by the app.' | Out-Null
+  Open-Workflow;Select-Option '已保存流程' 'Existing Workflow Preserve';Click-Control '应用流程'
+  Wait-Condition {(Read-WorkflowField '偏移量（毫秒）') -eq '123'} 'Existing workflow preset parameters were not read by the app.' | Out-Null
+  Click-Control '新建流程'
+}
 function Invoke-WorkflowChild($Parent, [string] $Name) {
   $control = Wait-Condition {
     $candidate = $Parent.FindFirst($scope::Descendants, (New-Object System.Windows.Automation.AndCondition((Condition $element::NameProperty $Name), (Condition $element::ControlTypeProperty $types::Button))))
@@ -111,6 +127,7 @@ function Read-WorkflowPresets {
 try {
   $stage = 'workflow-four-step-native-input'
   Open-Workflow
+  if($PreserveExistingStore){Assert-ExistingWorkflowStateRead;$report.existingSettingsAndPresetsReadBefore=$true}
   foreach ($label in @('删除空白字幕','空格清理','查找和替换','整体时间偏移')) { Select-Option '添加步骤类型' $label; Click-Control '添加处理步骤' }
   Set-WorkflowField '查找内容' '错词'; Set-WorkflowField '替换为' '正确'; Set-WorkflowField '偏移量（毫秒）' '500'
   $inputA = New-WorkflowFixture (Join-Path $testRoot 'input-files') '第一份.srt'
@@ -153,7 +170,9 @@ try {
   Workflow-Pass 'presetRestartRoundTrip'
 
   $stage = 'workflow-native-preset-json'
-  Click-Control '导出预设 JSON'; Click-Control '全选工具预设'; Click-Control '全选流程预设'
+  Click-Control '导出预设 JSON'
+  Set-WorkflowCheckbox '工具 · 整体时间偏移 · Native Shift 500' $true
+  Set-WorkflowCheckbox '流程 · Native Four Step' $true
   Set-WorkflowCheckbox '我已了解个人输入参数会随 JSON 分享' $true
   Click-Control '确认导出所选预设'
   $presetJson = Join-Path $testRoot 'native-presets.json'
@@ -161,6 +180,7 @@ try {
   Wait-Condition { Test-Path -LiteralPath $presetJson } 'Native preset JSON was not exported.' | Out-Null
   $envelope = [IO.File]::ReadAllText($presetJson,$utf8) | ConvertFrom-Json
   Assert-Condition ($envelope.format -eq 'srttools-presets' -and @($envelope.items).Count -eq 2) 'Exported preset JSON did not contain both explicitly selected preset kinds.'
+  Assert-Condition (@($envelope.items|Where-Object{$_.name -like 'Existing *'}).Count -eq 0) 'Unselected existing presets leaked into the shared JSON.'
   Assert-Condition (!([IO.File]::ReadAllText($presetJson).Contains($testRoot))) 'Preset JSON contained an absolute fixture path.'
   $beforeConflict = (Get-FileHash -LiteralPath $storePath -Algorithm SHA256).Hash
   Click-Control '导入预设 JSON'; Select-DialogPath '导入 SRTTools 预设 JSON' $presetJson
@@ -185,6 +205,7 @@ try {
   Workflow-Pass 'invalidPresetPreservesStore'
 
   . (Join-Path $PSScriptRoot 'windows-workflow-output-steps.ps1')
+  if($PreserveExistingStore){Restart-WorkflowApp;Assert-ExistingWorkflowStateRead;$report.existingSettingsAndPresetsReadAfter=$true}
   foreach ($fixture in $originalHashes.Keys) { Assert-Condition ((Get-FileHash -LiteralPath $fixture -Algorithm SHA256).Hash -eq $originalHashes[$fixture]) 'A workflow source fixture changed.' }
   Assert-Condition (!($report.workflowChecks.Values -contains $false)) 'A required native workflow check did not complete.'
   $report.originalPreserved = $true; $report.preservedSourceCount = $originalHashes.Count

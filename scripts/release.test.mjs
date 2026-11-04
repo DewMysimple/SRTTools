@@ -6,6 +6,7 @@ import os from 'node:os';
 import {
   MANAGED_BY, controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
   sha256, sourceFingerprint, run, validateStage, verifyRelease, walkFiles, withReleaseLock, writeMetadata, zipPortable, assertIdlePaths, releaseResources,
+  validateWindowsQaReport,
 } from './release-common.mjs';
 import { cleanOutputs, planCleanup } from './clean-outputs.mjs';
 
@@ -37,6 +38,29 @@ const workflowChecks = {
   nativePresetJsonExchange: true, invalidPresetPreservesStore: true, nestedDirectoryWrite: true,
   multiRootZipManifest: true, sourceOverlapRejected: true, failedWriteRetry: true, cancelRetry: true,
 };
+
+test('Windows QA gates require every unique check and confirmed fixture cleanup', () => {
+  for (const kind of ['safety', 'state']) {
+    const count = kind === 'safety' ? 10 : 12;
+    const report = {
+      schemaVersion: 1, status: 'PASS',
+      producer: kind === 'safety' ? 'srttools-qa-safety-tests-v1' : 'srttools-windows-state-protection-tests-v1',
+      checks: Array.from({ length: count }, (_, index) => ({ name: `check-${index}`, status: 'PASS' })),
+      ...(kind === 'safety' ? { checkCount: count, cleanupComplete: true, fixturePreserved: null }
+        : { passed: count, failed: 0, coverage: { fixtureCleanup: true } }),
+    };
+    assert.deepEqual(validateWindowsQaReport(report, kind), { passed: count, failed: 0, fixtureCleanup: true });
+    const invalid = [
+      null, { ...report, producer: 'unknown' }, { ...report, schemaVersion: 2 }, { ...report, status: 'FAIL' },
+      { ...report, checks: report.checks.slice(1) },
+      { ...report, checks: report.checks.map((check, index) => index === 0 ? { ...check, status: 'FAIL' } : check) },
+      { ...report, checks: report.checks.map(check => ({ ...check, name: 'same-check' })) },
+      ...(kind === 'safety' ? [{ ...report, cleanupComplete: false }, { ...report, checkCount: 9 }, { ...report, fixturePreserved: 'retained' }]
+        : [{ ...report, coverage: { fixtureCleanup: false } }, { ...report, passed: 11 }, { ...report, failed: 1 }]),
+    ];
+    for (const value of invalid) assert.throws(() => validateWindowsQaReport(value, kind), /incomplete or failed/u);
+  }
+});
 
 test('v0.4 native evidence requires the workflow scenario and every real workflow check', async t => {
   const root = await fixture(t);

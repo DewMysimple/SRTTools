@@ -2,7 +2,36 @@
 
 v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [发布检查表](RELEASE_CHECKLIST_v0.1.1.md)。回归夹具位于 [examples/回归](../examples/回归)，包含 UTF-8 BOM、GBK CRLF、Unicode 文件名、重复编号和损坏时间行。Playwright 将本次运行的截图留在 `test-results/`。
 
-## v0.3.0 本轮验证（2026-11-04）
+## v0.4.0 验证进行中（2026-11-04）
+
+基线在 `97500418df0ebc036a08987987f87798cb35c091` 实际重新运行，之后在 `codex/v0.4.0` 分阶段实现。当前产品版本为0.4.0；本节不是正式发布通过声明。最终源码、原生包、安装/卸载和远程main证据集中在[发布审阅](REVIEW_v0.4.0_RELEASE.md)。
+
+| 检查 | 当前实际结果与范围 |
+| --- | --- |
+| npm ci | v0.3基线与0.4清单各实际执行，均268 packages / 5s；依赖版本没有放宽 |
+| lint / typecheck / build | 开发源码通过；正式统一门槛待重新执行。Vite有主chunk超过500kB提示，未隐藏；流程编辑器按需加载 |
+| Vitest | 最新全量21 files / 306 tests通过，1.18s；包含旧解析/编码/简繁/diff/单项和新流程/存储/树规划 |
+| Rust / Clippy | 42/42通过，0.74s；Clippy all-targets -D warnings通过；含真实路径/junction/原地reparse阳性对照和写入中取消 |
+| 发布安全 | 15/15通过：0.4缺完整workflow证据不允许晋升，旧0.3 lastgood可保全，原有回滚/未知文件/链接/锁边界不变 |
+| Chromium | 开发阶段全63通过；后续流程/布局10项、目录5项分别通过。正式首轮为71/72，已定位并修复测试同步，最终72全量待重跑 |
+| 原生workflow开发ZIP | 10/10 true，9源文件hash不变、退出/Store恢复/cleanup true；直接和Node后台→PS5链路各通过，dirty=true不冒充正式包 |
+| 写入中取消 | 真实128MiB原生输出，在观察到0.7–1.4MiB已写后finish，20/20通过；无partial/tmp/guard，旧成功与源不变、句柄释放、fresh retry成功；不是UIA点击写入取消的同义证据 |
+| QA状态/安全 | PS5状态12/12（真实O/G/DACL恢复、深树拒绝等）、Job/path/lease安全10/10真实通过；仅自有GUID测试，不碰真实用户profile |
+| benchmark | `npm run benchmark`完成：Node22组+独立温缓存IO4组、真实生产Worker11组，各warmup+5runs；1017创建/终止、active0/max1，取消无假成功。详见[性能报告](PERFORMANCE_v0.4.0.md) |
+| 托管CI | [b85d5a0 的两项job实际success](https://github.com/DewMysimple/SRTTools/actions/runs/41816081583)；它早于本地发现的偶发测试等待问题及QA驱动修补，不替代新源码验证 |
+| 正式发布 / Setup / main | 待完成；旧0.3六文件与原manifest在首轮提前失败后完全不变 |
+
+### 真实失败与修复
+
+正式首轮在Chromium第53项CRUD用例提前失败（71通过/1失败），尚未进入Tauri和预定before-publish点。测试确认删除后仅检查一直存在的四张步骤卡，随即注入Quota失败，可能把尚未完成的删除也阻断，产品按设计保留错误对话框。修为等待对话框消失和保存列表真实删除，再注入下一次保存失败，另断言旧Store raw完全相同；专项20/20重复通过（1.2分钟）。这次旧产物保全不冒充已经跑到计划故障点。
+
+独立审阅还实证修复了纯Chinese ASS跨控制标记词组边界、处理重试丢平铺/已写ID/避让路径、隔离预设复活、原地reparse防护，以及安装QA超时/lease/清理根/深备份恢复风险。注册表JSON在PS5即使WarningAction Stop也可能静默截断，必须用严格递归shape/depth和完整roundtrip验证；测试记录区分真实FS/registry/进程和browser mock IPC，不混用。
+
+新Windows10、125%/150%/200%DPI、无WebView2干净系统、超MAX_PATH系统选择器仍NOT_RUN；Explorer真实菜单显示/点击仍BLOCKED，保持默认关闭实验性。没有用旧测试数字或注册成功替代这些环境验收。
+
+## v0.3.0 历史验收（2026-11-04）
+
+以下是当时0.3交付的历史证据；其中“当前/保留/最终目录”等描述属于该次验收时点，不表示后续版本的发布目录内容。新的正式交付以本页0.4节及发布审阅为准。
 
 合并前 `origin/main=123eb499336f4f571c4ecf41f5fbe47da4223640`，开发分支与快进目标 `f5c92e6afc056bee0dbeae052caa15f0bf70b226`，推送后已核实主线包含 v0.2.0。阶段提交为 `a67fab9`（发布）、`d2a68a1`（简繁）、`fd614b8`（严格编码）、`81e5cb4`（目录导入）。当前版本清单均为 0.3.0。环境仍为本机 Win11 Pro 25H2 26200.9711、x64、96 DPI / 100%、WebView2 156.0.4314.58、Node24.16/npm12.0.1、Rust1.97 MSVC。
 

@@ -5,6 +5,7 @@ import {
   PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, controlledPath, exists, fileRecords, makeStage,
   promoteRelease, recordPortableInventory, removeTree, run, sha256, validateStage, verifyRelease, walkFiles,
   withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths, releaseResources,
+  validateWindowsQaReport,
 } from './release-common.mjs';
 import { cleanOutputs } from './clean-outputs.mjs';
 
@@ -142,6 +143,17 @@ if (args.includes('--check')) {
         const started = Date.now();
         await run('cargo', command);
         checks.push({ command: `cargo ${command.join(' ')}`, status: 'PASS', elapsedMs: Date.now() - started });
+      }
+      for (const kind of ['safety', 'state']) {
+        const script = kind === 'safety' ? 'windows-qa-safety.test.ps1' : 'windows-state-protection.test.ps1';
+        const reportPath = await controlledPath(root, path.join(baseline.target, `${path.basename(stage)}-qa-${kind}.json`));
+        if (await exists(reportPath)) throw new Error('A private QA report path already exists; existing evidence was preserved.');
+        const command = ['-NoLogo', '-NoProfile', '-STA', '-File', `scripts/${script}`];
+        const started = Date.now();
+        await run('powershell', [...command, '-ReportPath', reportPath]);
+        const result = validateWindowsQaReport(JSON.parse(await fs.readFile(reportPath, 'utf8')), kind);
+        checks.push({ command: `powershell ${command.join(' ')}`, status: 'PASS', elapsedMs: Date.now() - started, ...result });
+        await fs.unlink(await controlledPath(root, reportPath));
       }
       await npm(['run', 'test:e2e', '--', '--output', path.join(stage, 'test-results')], {
         env: { PLAYWRIGHT_HTML_OUTPUT_DIR: path.join(stage, 'playwright-report') },

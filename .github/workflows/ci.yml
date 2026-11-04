@@ -38,3 +38,5 @@ jobs:
       - run: rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component clippy
       - run: cargo +stable-x86_64-pc-windows-msvc test --locked --manifest-path src-tauri/Cargo.toml
       - run: cargo +stable-x86_64-pc-windows-msvc clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: powershell -NoLogo -NoProfile -STA -File scripts/windows-qa-safety.test.ps1
+      - run: powershell -NoLogo -NoProfile -STA -File scripts/windows-state-protection.test.ps1

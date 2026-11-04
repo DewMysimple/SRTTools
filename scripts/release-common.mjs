@@ -18,6 +18,21 @@ export const WORKFLOW_SMOKE_CHECKS = Object.freeze([
 ]);
 const HEADER_NAMES = ['SHA256SUMS.txt', 'build-info.json'];
 
+export function validateWindowsQaReport(report, kind) {
+  const state = kind === 'state';
+  const count = state ? 12 : 10;
+  const producer = state ? 'srttools-windows-state-protection-tests-v1' : 'srttools-qa-safety-tests-v1';
+  if (!['safety', 'state'].includes(kind) || report?.schemaVersion !== 1 || report.producer !== producer
+    || report.status !== 'PASS' || !Array.isArray(report.checks) || report.checks.length !== count
+    || !report.checks.every(check => typeof check?.name === 'string' && check.name.length > 0 && check.status === 'PASS')
+    || new Set(report.checks.map(check => check.name)).size !== count
+    || (state ? report.passed !== count || report.failed !== 0 || report.coverage?.fixtureCleanup !== true
+      : report.checkCount !== count || report.cleanupComplete !== true || report.fixturePreserved !== null)) {
+    throw new Error(`Windows QA ${kind} report is incomplete or failed.`);
+  }
+  return { passed: count, failed: 0, fixtureCleanup: true };
+}
+
 export function inside(root, target) {
   const relative = path.relative(root, target);
   return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);

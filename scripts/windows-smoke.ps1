@@ -4,7 +4,10 @@
   [string] $ExpectedVersion,
   [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow')][string] $Scenario = 'smoke',
   [string] $NsisPath,
-  [switch] $AllowUnavailableContextMenu
+  [switch] $AllowUnavailableContextMenu,
+  [switch] $PreserveExistingStore,
+  [string] $ParentLeasePath,
+  [string] $ParentLeaseToken
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +20,9 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
   $arguments += @('-Scenario', $Scenario)
   if ($NsisPath) { $arguments += @('-NsisPath', $NsisPath) }
   if ($AllowUnavailableContextMenu) { $arguments += '-AllowUnavailableContextMenu' }
+  if ($PreserveExistingStore) { $arguments += '-PreserveExistingStore' }
+  if ($ParentLeasePath) { $arguments += @('-ParentLeasePath',$ParentLeasePath) }
+  if ($ParentLeaseToken) { $arguments += @('-ParentLeaseToken',$ParentLeaseToken) }
   & (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') @arguments
   exit $LASTEXITCODE
 }
@@ -280,9 +286,13 @@ function Restore-File([string] $Path, $Snapshot) {
 
 function Restore-Store($Snapshot) {
   Assert-Condition ($Snapshot.schemaVersion -eq 1 -and $null -ne $Snapshot.store -and $null -ne $Snapshot.recovery) 'Smoke backup format was invalid.'
+  Assert-QAFileSnapshot $Snapshot.store;Assert-QAFileSnapshot $Snapshot.recovery
   Restore-File $storePath $Snapshot.store
   Restore-File $recoveryPath $Snapshot.recovery
 }
+
+. (Join-Path $PSScriptRoot 'windows-state-protection.ps1')
+. (Join-Path $PSScriptRoot 'windows-qa-safety.ps1')
 
 try {
   Assert-Condition ([Environment]::UserInteractive -and (Get-Process -Id $PID).SessionId -ne 0) 'An interactive Windows session is required.'
@@ -302,39 +312,64 @@ try {
     Assert-Condition ($previousReport.producer -eq $report.producer) 'Refusing to overwrite an unknown report file.'
   }
   $canWriteReport = $true
-  $hasMutex = $mutex.WaitOne(0)
-  Assert-Condition $hasMutex 'Another native smoke test is active.'
-  Assert-Condition (!(Get-Process -Name 'subtitle-tools' -ErrorAction SilentlyContinue)) 'Close the existing Subtitle Tools session before native smoke verification.'
-
   $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
   $report.sourceSha = (& git -C $repository rev-parse HEAD).Trim()
   $report.sourceDirty = [bool](& git -C $repository status --porcelain)
   $target = Join-Path $repository 'src-tauri\target'
-  foreach ($directory in @($repository, (Join-Path $repository 'src-tauri'), $target)) {
-    if (Test-Path -LiteralPath $directory) {
-      Assert-Condition (!((Get-Item -LiteralPath $directory -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) 'Smoke workspace ancestry contains a reparse point.'
-    }
+  $storeDirectory=Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'com.subtitletools.desktop'
+  $setupBackup=Join-Path $storeDirectory 'subtitle-tools-setup-qa-backup.json'
+  $delegated=[bool]($ParentLeaseToken -or $ParentLeasePath)
+  Assert-Condition (!$PreserveExistingStore -or $delegated) 'Keeping an existing Store requires a verified setup delegation.'
+  if($delegated){
+    Assert-Condition ($ParentLeaseToken -and [IO.Path]::IsPathRooted($ParentLeasePath)) 'Setup delegation was incomplete.'
+    [void](Assert-QANoReparse ([IO.Path]::GetDirectoryName($ParentLeasePath)))
+    $leaseItem=Get-Item -LiteralPath $ParentLeasePath -Force
+    Assert-Condition (!$leaseItem.PSIsContainer -and !($leaseItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $leaseItem.Length -le 64KB) 'Setup lease file was invalid.'
+    $lease=[IO.File]::ReadAllText($ParentLeasePath)|ConvertFrom-Json
+    Assert-QADataBounded $lease
+    Assert-QAParentLease $lease $ParentLeaseToken $ExePath $storeDirectory $target $repository
+    Assert-Condition ($ParentLeasePath -eq (Join-Path $lease.root 'lease.json')) 'Setup lease filename was not owned.'
+    $backupItem=Get-Item -LiteralPath $setupBackup -Force
+    Assert-Condition (!$backupItem.PSIsContainer -and !($backupItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $backupItem.Length -le 64MB) 'Setup owner backup was invalid.'
+    $backupBytes=[IO.File]::ReadAllBytes($setupBackup)
+    $hasher=[Security.Cryptography.SHA256]::Create()
+    try{$backupHash=[BitConverter]::ToString($hasher.ComputeHash($backupBytes)).Replace('-','')}finally{$hasher.Dispose()}
+    Assert-Condition ($backupHash -ceq $lease.backupHash) 'Setup immutable backup did not match its lease.'
+    $ownerBackup=[Text.Encoding]::UTF8.GetString($backupBytes)|ConvertFrom-Json
+    Assert-QADataBounded $ownerBackup
+    Assert-Condition ($ownerBackup.schemaVersion -eq 2 -and $ownerBackup.producer -eq 'srttools-setup-acceptance-v1' -and $ownerBackup.token -ceq $ParentLeaseToken -and $ownerBackup.root -eq $lease.root -and $ownerBackup.parentPid -eq $lease.parentPid -and $ownerBackup.parentStartUtcTicks -eq $lease.parentStartUtcTicks) 'Setup backup ownership did not match the child.'
   }
+  $mutex.Dispose();$mutex=$null
+  $mutex=Enter-QASmokeLease $ParentLeaseToken {Test-Path -LiteralPath $setupBackup};$hasMutex=$true
+  Assert-Condition (!(Get-Process -Name subtitle-tools -ErrorAction SilentlyContinue)) 'Close the existing Subtitle Tools session before native smoke verification.'
+  $report.delegatedProfileLease=$delegated
+  [void](Assert-QANoReparse $target)
   $testRoot = Join-Path $target ('windows-smoke-' + [Guid]::NewGuid().ToString('N'))
   [IO.Directory]::CreateDirectory($testRoot) | Out-Null
   $testRoot = (Get-Item -LiteralPath $testRoot).FullName
   Assert-Condition ($testRoot.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) 'Smoke workspace escaped the repository target directory.'
   $storeDirectory = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'com.subtitletools.desktop'
   [IO.Directory]::CreateDirectory($storeDirectory) | Out-Null
-  Assert-Condition (!((Get-Item -LiteralPath $storeDirectory).Attributes -band [IO.FileAttributes]::ReparsePoint)) 'Store directory must not be a reparse point.'
+  [void](Assert-QANoReparse $storeDirectory)
   $storePath = Join-Path $storeDirectory 'subtitle-tools.json'
   $recoveryPath = Join-Path $storeDirectory 'subtitle-tools-recovery.json'
   $backupPath = Join-Path $storeDirectory 'subtitle-tools-release-smoke-backup.json'
   if (Test-Path -LiteralPath $backupPath) {
     # A previous process interruption retains its durable backup for this recovery.
+    $item=Get-Item -LiteralPath $backupPath -Force;Assert-Condition (!$item.PSIsContainer -and !($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $item.Length -le 64MB) 'Smoke recovery backup was invalid.'
     $pending = [IO.File]::ReadAllText($backupPath) | ConvertFrom-Json
+    Assert-QADataBounded $pending
+    if($delegated){Assert-Condition ($pending.ownerToken -ceq $ParentLeaseToken -and $pending.ownerParentPid -eq $lease.parentPid -and $pending.ownerParentStartUtcTicks -eq $lease.parentStartUtcTicks) 'Nested smoke backup did not belong to this setup.'}
+    else{Assert-Condition (!$pending.ownerToken) 'An orphaned delegated backup requires setup recovery.'}
     Restore-Store $pending
     Remove-Item -LiteralPath $backupPath
   }
-  $state = @{ schemaVersion = 1; store = (Snapshot-File $storePath); recovery = (Snapshot-File $recoveryPath) }
-  Write-Synced $backupPath ($utf8.GetBytes(($state | ConvertTo-Json -Depth 5 -Compress))) ([IO.FileMode]::CreateNew)
-  Write-Synced $storePath ($utf8.GetBytes('{}'))
-  if (Test-Path -LiteralPath $recoveryPath) { Remove-Item -LiteralPath $recoveryPath }
+  $candidate = @{ schemaVersion = 1; store = (Snapshot-File $storePath); recovery = (Snapshot-File $recoveryPath) }
+  if($delegated){$candidate.ownerToken=$ParentLeaseToken;$candidate.ownerParentPid=$lease.parentPid;$candidate.ownerParentStartUtcTicks=$lease.parentStartUtcTicks}
+  Assert-QAFileSnapshot $candidate.store;Assert-QAFileSnapshot $candidate.recovery
+  Write-Synced $backupPath ($utf8.GetBytes((ConvertTo-QADataJson $candidate))) ([IO.FileMode]::CreateNew)
+  $state=$candidate
+  if(!$PreserveExistingStore){Write-Synced $storePath ($utf8.GetBytes('{}'));if(Test-Path -LiteralPath $recoveryPath){Remove-Item -LiteralPath $recoveryPath}}
   [Environment]::SetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', (Join-Path $testRoot 'webview'), 'Process')
 
   $source = Join-Path $testRoot '合成 字幕 (🐱).srt'
@@ -435,26 +470,13 @@ try {
   }
   [Environment]::SetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', $originalWebViewFolder, 'Process')
   if ($hasMutex) { $mutex.ReleaseMutex() }
-  $mutex.Dispose()
+  if($mutex){$mutex.Dispose()}
 
   if ($testRoot -and (Test-Path -LiteralPath $testRoot)) {
-    # Only remove the GUID directory created above, with no reparse-point traversal.
-    $rootItem = Get-Item -LiteralPath $testRoot -Force
-    $directories = [Collections.Generic.Stack[string]]::new()
-    $directories.Push($testRoot)
-    $safeTree = !($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)
-    while ($safeTree -and $directories.Count) {
-      foreach ($child in @(Get-ChildItem -LiteralPath $directories.Pop() -Force)) {
-        if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) { $safeTree = $false; break }
-        if ($child.PSIsContainer) { $directories.Push($child.FullName) }
-      }
-    }
-    if ($safeTree -and $rootItem.FullName.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) {
-      try {
-        Remove-Item -LiteralPath $rootItem.FullName -Recurse -Force -ErrorAction Stop
-        $report.cleanupComplete = $true
-      } catch { $report.cleanupComplete = $false }
-    }
+    try {
+      Remove-QAWorkspace $testRoot $target $repository 'windows-smoke-'
+      $report.cleanupComplete = $true
+    } catch { $report.cleanupComplete = $false }
   }
   if (!$report.failureStage -and $report.originalPreserved -and $report.shutdown -and $report.storeRestored) {
     if ($report.cleanupComplete) { $report.status = if ($report.contextMenuStatus -eq 'BLOCKED') { 'PARTIAL' } else { 'PASS' } }
