@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { version as appVersion } from '../../package.json';
 import { readPresetValues, writePresetValues, type PresetValues } from './persistence';
 import { serializePresetOperation as serialize } from './preset-queue';
 import { toolPresetRepository, type ToolPreset } from './preset-service';
@@ -124,7 +125,7 @@ export async function exportPresetSelection(selection: ExportSelection, exported
       return left < right ? -1 : left > right ? 1 : 0;
     });
     const result = new TextEncoder().encode(`${JSON.stringify(ordered({ format: 'srttools-presets', schemaVersion: 1,
-      exportedAt, appVersion: '0.4.0', items: safe }), null, 2)}\n`);
+      exportedAt, appVersion, items: safe }), null, 2)}\n`);
     if (result.byteLength > MAX_PRESET_IMPORT_BYTES) return fail('limit', '所选预设 JSON 超过 1 MiB，请分批导出。');
     return result;
   });

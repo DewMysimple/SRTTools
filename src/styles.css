@@ -337,6 +337,44 @@ dialog h2 { font-size: 17px; }
 .shortcut-list dd { margin: 0; }
 .app-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 100dvh; color: var(--primary); font-size: 14px; }
 .spin { animation: spin 1.2s linear infinite; }
+.batch-mode { margin-bottom: 20px; }
+.batch-mode button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.workflow-steps { list-style: none; margin: 18px 0; padding: 0; display: grid; gap: 14px; }
+.workflow-step { padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); min-width: 0; }
+.workflow-step.disabled-step { background: var(--surface-muted); }
+.workflow-step-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+.workflow-step-heading > strong { flex: 1; font-size: 14px; }
+.workflow-step-params { margin-top: 13px; }
+.workflow-step-params > summary { font-size: 12px; cursor: pointer; }
+.workflow-step-params .tool-presets { margin-top: 14px; }
+.workflow-add { display: flex; gap: 12px; align-items: flex-end; margin: 16px 0; }
+.workflow-add .field { flex: 1; }
+.workflow-add > button { margin-bottom: 1px; }
+.workflow-analysis { border-block: 1px solid var(--border); margin-top: 18px; padding: 13px 0; font-size: 13px; }
+.workflow-applicability { margin-top: 13px; font-size: 12px; }
+.workflow-applicability ul { max-height: 240px; overflow: auto; padding-left: 20px; }
+.workflow-applicability li { padding: 6px 0; overflow-wrap: anywhere; }
+.workflow-step-summaries { padding: 14px; background: var(--surface-muted); border-radius: 7px; margin-top: 14px; font-size: 12px; }
+.workflow-step-summaries h3 { font-size: 13px; }
+.workflow-step-summaries ul { margin: 8px 0 0; padding-left: 18px; }
+.workflow-step-summaries li { margin-bottom: 7px; }
+.workflow-step-summaries p { color: var(--text-muted); }
+.preset-exchange { margin-top: 10px; }
+.preset-exchange dialog { width: min(680px, calc(100vw - 40px)); }
+.preset-exchange-list, .preset-import-preview { max-height: 260px; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 7px; margin: 14px 0; }
+.preset-exchange-list { display: grid; gap: 10px; }
+.preset-import-preview { padding-left: 26px; font-size: 12px; }
+.preset-import-preview li { margin-bottom: 8px; overflow-wrap: anywhere; }
+.preset-import-preview p { margin: 2px 0; font-size: 12px; }
+.dialog-content { margin: 12px 0 20px; }
+dialog { max-height: calc(100dvh - 50px); overflow-y: auto; }
+.output-tree { border: 1px solid var(--border); border-radius: 7px; padding: 12px; margin: 14px 0; max-height: 300px; overflow: auto; font-size: 12px; }
+.output-tree ul { margin: 7px 0 0; padding-left: 18px; }
+.output-tree li { padding: 5px 0; overflow-wrap: anywhere; }
+.output-tree small { color: var(--text-muted); }
+.folder-export-panel > .field { max-width: 380px; }
+.folder-export-panel > p { margin-top: 12px; font-size: 12px; }
+.quarantine-view { margin: 12px 0; font-size: 12px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (min-width: 1450px) { .main-content { padding-top: 44px; } .dropzone:not(.compact) { padding-top: 34px; padding-bottom: 28px; } .full-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 1050px) { .sidebar { width: 205px; padding-left: 12px; padding-right: 12px; } .main-content { padding: 26px; } .topbar { padding: 0 26px; } .page-heading { gap: 12px; } .page-heading > .privacy-badge { display: none; } .tool-card { padding: 16px; } .home-bottom-grid { grid-template-columns: 1.4fr 1fr; } .history-counts { flex-direction: column; gap: 1px; } }

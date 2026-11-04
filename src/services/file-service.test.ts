@@ -4,7 +4,8 @@ const { invoke, desktop, listen } = vi.hoisted(() => ({ invoke: vi.fn(), desktop
 vi.mock('@tauri-apps/api/core', () => ({ invoke, isTauri: () => desktop.value }));
 vi.mock('@tauri-apps/api/event', () => ({ listen }));
 
-import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, pickFiles, readBrowserFiles, readDroppedFiles, saveOutput, pickDirectory, subscribeFileDrop } from './file-service';
+import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, pickFiles, readBrowserFiles, readDroppedFiles, saveOutput, pickDirectory, subscribeFileDrop, prepareFolderExport, writeFolderExport, finishFolderExport } from './file-service';
+import { planFolderOutputs } from './export-service';
 
 function file(name: string, content: string, size = content.length): File {
   const bytes = new TextEncoder().encode(content);
@@ -123,5 +124,35 @@ describe('file service export boundary', () => {
 
   it('explains output directory limitations in browser preview', async () => {
     await expect(pickDirectory()).rejects.toThrow('浏览器预览');
+  });
+
+  it('passes only a reviewed immutable tree and concrete native source paths to a scoped export session', async () => {
+    desktop.value = true;
+    const input = { id: 'source', name: 'lesson.srt', path: 'C:\\source\\season\\lesson.srt', bytes: new Uint8Array([1]), size: 1, folderSource: { rootId: 'root', rootName: 'source', relativePath: 'season/lesson.srt' } };
+    const plan = planFolderOutputs([{ id: 'result', input, output: { name: 'lesson_processed.srt', bytes: new Uint8Array([65, 255]) } }], 'preserve');
+    const prepared = { exportId: 'session', directory: 'D:\\output', entries: [{ id: 'result', relativePath: 'season/lesson_processed (1).srt', renamed: true }] };
+    invoke.mockResolvedValueOnce(prepared);
+    await expect(prepareFolderExport(plan, 'D:\\output')).resolves.toEqual(prepared);
+    expect(invoke).toHaveBeenCalledWith('prepare_folder_export', {
+      exportId: expect.any(String), directory: 'D:\\output', entries: [{ id: 'result', relativePath: 'season/lesson_processed.srt', sourcePath: input.path }],
+    });
+    expect(invoke.mock.calls[0][1]).not.toHaveProperty('bytes');
+    invoke.mockResolvedValueOnce({ path: 'D:\\output\\season\\lesson_processed (1).srt', relativePath: 'season/lesson_processed (1).srt' });
+    await expect(writeFolderExport('session', 'result', plan[0].bytes)).resolves.toMatchObject({ relativePath: 'season/lesson_processed (1).srt' });
+    expect(invoke).toHaveBeenLastCalledWith('write_folder_export', { exportId: 'session', id: 'result', bytes: [65, 255] });
+    invoke.mockResolvedValueOnce(undefined);
+    await finishFolderExport('session');
+    expect(invoke).toHaveBeenLastCalledWith('finish_folder_export', { exportId: 'session' });
+  });
+
+  it('preserves native output picker cancellation and rejects ungranted browser sources before IPC', async () => {
+    const input = { id: 'source', name: 'lesson.srt', bytes: new Uint8Array([1]), size: 1 };
+    const plan = planFolderOutputs([{ id: 'result', input, output: { name: 'lesson_processed.srt', bytes: new Uint8Array([1]) } }], 'flat');
+    await expect(prepareFolderExport(plan)).rejects.toThrow('浏览器可导出');
+    desktop.value = true;
+    await expect(prepareFolderExport(plan)).rejects.toThrow('已授权');
+    expect(invoke).not.toHaveBeenCalled();
+    invoke.mockResolvedValueOnce(null);
+    await expect(prepareFolderExport([{ ...plan[0], sourcePath: 'C:\\selected.srt' }])).resolves.toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Eye, RotateCcw, Square, Check, ChevronDown, ChevronRight, FileArchive, AlertTriangle, Files, ArrowRight, FolderOpen } from 'lucide-react';
 import type { ToolDefinition } from '../app/tool-registry';
 import { defaultParameters, validateParameters } from '../app/tool-registry';
@@ -11,6 +11,7 @@ import { validateFileNamePattern } from '../services/settings-service';
 import { FileSelector, FileList, NoticeBox, BusyLabel, errorText, formatSize, OpenFolderButton } from './common';
 import { PagedCuePreview, Pagination, PREVIEW_PAGE_SIZE, SubtitleDiffPreview } from './subtitle-diff-preview';
 import { ToolPresets } from './tool-presets';
+import { FolderExportPanel, type FolderOutputEntry, type FolderExportState } from './folder-export-panel';
 
 const encodingChoices = [['utf-8', 'UTF-8'], ['utf-8-bom', 'UTF-8 BOM'], ['utf-16le', 'UTF-16 LE'], ['utf-16be', 'UTF-16 BE'], ['gbk', 'GBK（严格无损）'], ['gb18030', 'GB18030（严格无损）']];
 const inputEncodingChoices = [...encodingChoices.slice(0, 4), ['gbk', 'GBK（仅手动选择）'], ['gb18030', 'GB18030（仅手动选择）']];
@@ -23,9 +24,9 @@ function savedOutputDirectory(path: string): string {
   return path.slice(0, separator === 0 || separator === 2 && path[1] === ':' ? separator + 1 : separator);
 }
 
-export function ParameterForm({ definition, params, onChange, errors, disabled }: { definition: ToolDefinition; params: Record<string, unknown>; onChange: (value: Record<string, unknown>) => void; errors: Record<string, string>; disabled: boolean }) {
+export function ParameterForm({ definition, params, onChange, errors, disabled, idPrefix = 'param' }: { definition: ToolDefinition; params: Record<string, unknown>; onChange: (value: Record<string, unknown>) => void; errors: Record<string, string>; disabled: boolean; idPrefix?: string }) {
   return <div className="parameter-grid">{definition.parameters.map(field => <div className={`field ${field.type === 'checkbox' ? 'checkbox-field' : ''}`} key={field.key}>
-    {field.type === 'checkbox' ? <label className="check-label"><input type="checkbox" checked={params[field.key] === true} disabled={disabled} onChange={e => onChange({ ...params, [field.key]: e.target.checked })} />{field.label}</label> : <><label htmlFor={`param-${field.key}`}>{field.label}</label>{field.type === 'select' ? <select id={`param-${field.key}`} value={String(params[field.key] ?? '')} disabled={disabled} onChange={e => onChange({ ...params, [field.key]: e.target.value })}>{field.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input id={`param-${field.key}`} type={field.type} min={field.min} max={field.max} step={field.type === 'number' ? 1 : undefined} value={typeof params[field.key] === 'number' && Number.isNaN(params[field.key]) ? '' : String(params[field.key] ?? '')} disabled={disabled} aria-invalid={!!errors[field.key]} onChange={e => onChange({ ...params, [field.key]: field.type === 'number' ? e.target.value === '' ? NaN : Number(e.target.value) : e.target.value })} />}</>}
+    {field.type === 'checkbox' ? <label className="check-label"><input type="checkbox" checked={params[field.key] === true} disabled={disabled} onChange={e => onChange({ ...params, [field.key]: e.target.checked })} />{field.label}</label> : <><label htmlFor={`${idPrefix}-${field.key}`}>{field.label}</label>{field.type === 'select' ? <select id={`${idPrefix}-${field.key}`} value={String(params[field.key] ?? '')} disabled={disabled} onChange={e => onChange({ ...params, [field.key]: e.target.value })}>{field.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select> : <input id={`${idPrefix}-${field.key}`} type={field.type} min={field.min} max={field.max} step={field.type === 'number' ? 1 : undefined} value={typeof params[field.key] === 'number' && Number.isNaN(params[field.key]) ? '' : String(params[field.key] ?? '')} disabled={disabled} aria-invalid={!!errors[field.key]} onChange={e => onChange({ ...params, [field.key]: field.type === 'number' ? e.target.value === '' ? NaN : Number(e.target.value) : e.target.value })} />}</>}
     {field.help && <small>{field.help}</small>}{errors[field.key] && <span className="field-error">{errors[field.key]}</span>}
   </div>)}</div>;
 }
@@ -37,11 +38,12 @@ export function ToolWorkspace({ definition, batch = false }: { definition: ToolD
   const [outputDirectory, setOutputDirectory] = useState(settings.outputDirectory);
   const [tasks, setTasks] = useState<ProcessedTask[]>([]); const [selectedId, setSelectedId] = useState(''); const [processing, setProcessing] = useState(false); const [exporting, setExporting] = useState(false); const [showPreview, setShowPreview] = useState(settings.showPreview); const [exportedPaths, setExportedPaths] = useState<string[]>([]);
   const controller = useRef<AbortController | null>(null); const record = useRef<HistoryRecord | null>(null); const mounted = useRef(true);
+  const folderExportState = useRef<FolderExportState | undefined>(undefined);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.abort(); }; }, []);
-  const invalidate = () => { setTasks([]); setExportedPaths([]); setSelectedId(''); record.current = null; };
+  const invalidate = () => { setTasks([]); setExportedPaths([]); setSelectedId(''); record.current = null; folderExportState.current = undefined; };
   // A result belongs to the exact input objects and ordering, never to a subsequently changed queue.
   const previousFiles = useRef(files);
-  useEffect(() => { if (previousFiles.current !== files) { previousFiles.current = files; setTasks([]); setExportedPaths([]); setSelectedId(''); record.current = null; } }, [files]);
+  useEffect(() => { if (previousFiles.current !== files) { previousFiles.current = files; setTasks([]); setExportedPaths([]); setSelectedId(''); record.current = null; folderExportState.current = undefined; } }, [files]);
   const changeParams = (next: Record<string, unknown>) => { setParams(next); setErrors({}); invalidate(); };
   const changeOptions = (next: ProcessingOptions) => { setOptions(next); invalidate(); };
   const persistRecord = async (current: ProcessedTask[], paths: string[] = []) => {
@@ -63,7 +65,7 @@ export function ToolWorkspace({ definition, batch = false }: { definition: ToolD
     const retainedPaths = retry ? exportedPaths : [];
     const jobOptions = { ...options, fileIndexes: Object.fromEntries(files.map((file, index) => [file.id, index + 1])) };
     setProcessing(true); setBusy(true); if (!retry) setExportedPaths([]); controller.current = new AbortController();
-    if (!retry) { setTasks(files.map(initialTask)); record.current = null; }
+    if (!retry) { setTasks(files.map(initialTask)); record.current = null; folderExportState.current = undefined; }
     let finalTasks: ProcessedTask[];
     try {
       if (definition.combined) {
@@ -83,6 +85,11 @@ export function ToolWorkspace({ definition, batch = false }: { definition: ToolD
       if (mounted.current) { finalTasks = [{ ...initialTask(files[0]), inputName: definition.combined ? `${files.length} 个文件` : files[0].name, status: cancelled ? 'cancelled' : 'failed', errorMessage: cancelled ? undefined : errorText(error), summary: cancelled ? '处理已取消' : '处理失败' }]; setTasks(finalTasks); await persistRecord(finalTasks, retainedPaths); if (!cancelled) notify(errorText(error), 'error'); }
     } finally { setBusy(false); if (mounted.current) setProcessing(false); }
   };
+  const folderEntries = useMemo<FolderOutputEntry[]>(() => tasks.filter(task => task.status === 'success').flatMap(task => {
+    const input = files.find(file => file.id === task.id);
+    return input ? task.outputs.map((output, index) => ({ id: `${task.id}:${index}`, input, output })) : [];
+  }), [tasks, files]);
+  const folderOutput = batch && files.some(file => file.folderSource);
   const outputs = uniqueOutputNames(tasks.filter(t => t.status === 'success').flatMap(t => t.outputs));
   const exportResults = useCallback(async (zip = false, only?: ProcessedOutput) => {
     if (useAppStore.getState().busy) return;
@@ -121,7 +128,7 @@ export function ToolWorkspace({ definition, batch = false }: { definition: ToolD
   // persistRecord captures the current queue and definition and is used only within this render's export action.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, processing, exporting, exportedPaths, settings, outputDirectory, notify, setBusy]);
-  useEffect(() => { const save = (event: KeyboardEvent) => { if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); if (!document.querySelector('dialog[open]')) void exportResults(outputs.length > 1); } }; window.addEventListener('keydown', save); return () => window.removeEventListener('keydown', save); }, [exportResults, outputs.length]);
+  useEffect(() => { if (folderOutput) return; const save = (event: KeyboardEvent) => { if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); if (!document.querySelector('dialog[open]')) void exportResults(outputs.length > 1); } }; window.addEventListener('keydown', save); return () => window.removeEventListener('keydown', save); }, [exportResults, outputs.length, folderOutput]);
   useEffect(() => { if (!processing) return; const cancel = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('dialog[open]')) controller.current?.abort(); }; window.addEventListener('keydown', cancel); return () => window.removeEventListener('keydown', cancel); }, [processing]);
   const activeTask = tasks.find(t => t.id === selectedId) ?? tasks[0];
   const finished = tasks.filter(t => ['success', 'failed', 'cancelled'].includes(t.status)).length;
@@ -140,14 +147,15 @@ export function ToolWorkspace({ definition, batch = false }: { definition: ToolD
       <div className="result-stats"><span><strong>{tasks.filter(t => t.status === 'success').length}</strong> 已处理</span><span><strong>{tasks.filter(t => t.status === 'failed').length}</strong> 失败</span><span><strong>{outputs.length}</strong> 结果文件</span>{processing ? <button className="button secondary small" onClick={() => controller.current?.abort()}><Square size={13} />取消处理</button> : tasks.some(t => t.status === 'failed' || t.status === 'cancelled') && !definition.combined && <button className="button secondary small" disabled={globalBusy} onClick={() => void run(true)}><RotateCcw size={14} />重试未完成项</button>}</div>
       <div className="task-list">{tasks.map(t => <button className={`task-row ${activeTask?.id === t.id ? 'selected' : ''}`} key={t.id} onClick={() => setSelectedId(t.id)}><Files size={17} /><span className="task-name">{t.inputName}<small>{t.errorMessage ?? t.summary}</small></span><span className={`status-badge ${t.status}`}>{t.status === 'processing' ? <BusyLabel>处理中</BusyLabel> : statusNames[t.status]}</span><ChevronRight size={15} /></button>)}</div>
       {activeTask && <ResultDetails key={`${activeTask.id}-${activeTask.status}`} task={activeTask} combined={!!definition.combined} showPreview={showPreview} onToggle={() => setShowPreview(s => !s)} />}
-      {outputs.length > 0 && !processing && <div className="export-panel"><div className="section-heading"><div><h3>确认并导出</h3><p className="muted small-copy">{isDesktop() ? outputDirectory || '导出时选择保存位置；重名文件自动追加序号。' : '浏览器预览模式：导出为下载文件。桌面版支持本地输出目录。'}</p></div><div className="button-row">{isDesktop() && <button className="button secondary" disabled={globalBusy} onClick={() => { void pickDirectory().then(path => { if (path) setOutputDirectory(path); }).catch(error => notify(errorText(error), 'error')); }}><FolderOpen size={16} />更改保存目录</button>}<button className="button secondary" disabled={globalBusy} onClick={() => void exportResults(true)}>{exporting ? <BusyLabel>导出中</BusyLabel> : <><FileArchive size={16} />导出 ZIP</>}</button><button className="button primary" disabled={globalBusy} onClick={() => void exportResults(false)}><Download size={16} />{outputs.length === 1 ? '另存为' : '导出全部文件'}</button></div></div><div className="output-list">{outputs.map((o, i) => <div key={`${o.name}-${i}`}><span className="mono">{o.name}</span><small>{formatSize(o.bytes.length)}</small><button className="text-button" disabled={globalBusy} onClick={() => void exportResults(false, o)}>导出<ArrowRight size={13} /></button></div>)}</div></div>}
-      {exportedPaths.length > 0 && <NoticeBox kind="success"><div className="export-success"><span>已导出 {exportedPaths.length} 个文件。{isDesktop() && <span className="path-text">{exportedPaths.at(-1)}</span>}</span>{isDesktop() && <OpenFolderButton path={exportedPaths.at(-1)!} />}</div></NoticeBox>}
+      {outputs.length > 0 && !processing && folderOutput && <FolderExportPanel entries={folderEntries} initialState={folderExportState.current} onStateChange={state => { folderExportState.current = state; }} onExported={async paths => { setExportedPaths(paths); await persistRecord(tasks, paths); }} />}
+      {outputs.length > 0 && !processing && !folderOutput && <div className="export-panel"><div className="section-heading"><div><h3>确认并导出</h3><p className="muted small-copy">{isDesktop() ? outputDirectory || '导出时选择保存位置；重名文件自动追加序号。' : '浏览器预览模式：导出为下载文件。桌面版支持本地输出目录。'}</p></div><div className="button-row">{isDesktop() && <button className="button secondary" disabled={globalBusy} onClick={() => { void pickDirectory().then(path => { if (path) setOutputDirectory(path); }).catch(error => notify(errorText(error), 'error')); }}><FolderOpen size={16} />更改保存目录</button>}<button className="button secondary" disabled={globalBusy} onClick={() => void exportResults(true)}>{exporting ? <BusyLabel>导出中</BusyLabel> : <><FileArchive size={16} />导出 ZIP</>}</button><button className="button primary" disabled={globalBusy} onClick={() => void exportResults(false)}><Download size={16} />{outputs.length === 1 ? '另存为' : '导出全部文件'}</button></div></div><div className="output-list">{outputs.map((o, i) => <div key={`${o.name}-${i}`}><span className="mono">{o.name}</span><small>{formatSize(o.bytes.length)}</small><button className="text-button" disabled={globalBusy} onClick={() => void exportResults(false, o)}>导出<ArrowRight size={13} /></button></div>)}</div></div>}
+      {exportedPaths.length > 0 && !folderOutput && <NoticeBox kind="success"><div className="export-success"><span>已导出 {exportedPaths.length} 个文件。{isDesktop() && <span className="path-text">{exportedPaths.at(-1)}</span>}</span>{isDesktop() && <OpenFolderButton path={exportedPaths.at(-1)!} />}</div></NoticeBox>}
     </section>}
     {tasks.length === 0 && <div className="workspace-footnote"><FolderOpen size={14} /><span>选择文件 <ChevronRight size={12} />设置参数 <ChevronRight size={12} />预览结果 <ChevronRight size={12} />安全导出</span></div>}
   </div>;
 }
 
-function ResultDetails({ task, combined, showPreview, onToggle }: { task: ProcessedTask; combined: boolean; showPreview: boolean; onToggle: () => void }) {
+export function ResultDetails({ task, combined, showPreview, onToggle }: { task: ProcessedTask; combined: boolean; showPreview: boolean; onToggle: () => void }) {
   const [diagnosticPage, setDiagnosticPage] = useState(0);
   const [outputIndex, setOutputIndex] = useState(0);
   const diagnostics = task.diagnostics;

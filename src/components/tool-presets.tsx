@@ -7,6 +7,7 @@ import {
 } from '../services/preset-service';
 import { useAppStore } from '../stores/app-store';
 import { errorText } from './common';
+import { PresetExchange } from './preset-exchange';
 
 type Action = 'create' | 'update' | 'rename' | 'delete' | 'recover';
 
@@ -18,11 +19,12 @@ const dialogCopy = {
   recover: { title: '清理损坏预设', confirm: '确认清理', description: '清空无法读取的预设数据，应用设置和处理记录会保留。' },
 } satisfies Record<Action, { title: string; confirm: string; description: string }>;
 
-export function ToolPresets({ definition, params, disabled, onApply }: {
+export function ToolPresets({ definition, params, disabled, onApply, exchange = true }: {
   definition: ToolDefinition;
   params: Record<string, unknown>;
   disabled: boolean;
   onApply: (params: Record<string, unknown>) => void;
+  exchange?: boolean;
 }) {
   const inputId = useId();
   const mounted = useRef(false);
@@ -41,7 +43,9 @@ export function ToolPresets({ definition, params, disabled, onApply }: {
 
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    const changed = () => { setLoading(true); setLoadAttempt(attempt => attempt + 1); };
+    window.addEventListener('subtitle-tools:presets-changed', changed);
+    return () => { mounted.current = false; window.removeEventListener('subtitle-tools:presets-changed', changed); };
   }, []);
 
   useEffect(() => {
@@ -150,6 +154,7 @@ export function ToolPresets({ definition, params, disabled, onApply }: {
       <button type="button" className="text-button" disabled={!available} onClick={() => setAction('delete')}>删除预设</button>
     </div>}
     <p className="small-copy muted">预设仅保存在本机。保存前请确认表单中的查找与替换文字。</p>
+    {exchange && <PresetExchange disabled={locked} />}
     {applied && <p className="small-copy muted" role="status">当前预设：{applied.name}{changed && <> · <strong>已修改</strong></>}</p>}
     {ignoredCount > 0 && <p className="small-copy muted" role="status">已跳过 {ignoredCount} 项无效或不兼容的预设。</p>}
     {!!loadError && <div className="preset-actions">
