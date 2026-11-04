@@ -1,2 +1,5 @@
 # Preserve the original byte encodings and line endings of regression fixtures.
 examples/回归/*.srt -text
+
+# Preserve upstream legal texts byte-for-byte, including their original whitespace.
+docs/THIRD_PARTY_NOTICES.txt -text whitespace=-blank-at-eol,-blank-at-eof

@@ -28,6 +28,12 @@
 4. 校验唯一release-output、磁盘和白名单清理；填入本轮SHA/指纹/哈希/实测命令，准备发布说明与审批命令。
 5. 同步文档/工程记忆，按协议提交推送main，读取实际远端SHA；仅普通文档交接不改变构建指纹。
 
+## 性能复测和第三方声明补齐
+
+`npm ci`实际安装268包/26s，版本检查和17项发布安全测试通过。沿用现有`npm run benchmark`完成两轮，均保持输出等价、真实Worker1017创建/终止及active0/max1；部分耗时较第四阶段偏高，计算bundle SHA与旧轮完全相同，原因未确定，未改业务引擎或编造提速。两轮原始证据及对照见[性能报告](PERFORMANCE_v0.4.0.md)。后续正式构建仍待验。
+
+原随包NOTICE主要覆盖OpenCC、text-encoding和single-instance，遗漏了React/JSZip等声明。本轮保留原文本并追加锁定安装图28个npm包和Windows解析图251个Cargo包的上游许可、精确版本和源代码链接，按完整文本SHA去重，资源现为728,050B。清单包含构建/类型依赖，不宣称所有列项均进入运行时。缺少发布包根许可文件的6个crate，依据各自`.cargo_vcs_info.json`固定commit取上游文本；selectors保留原MPL头及MPL完整文本和对应版本源码下载链接。没有为项目本身选择许可证，也不把依赖清点当作对公开分发的法律结论。正式ZIP与安装版还将核验该资源的实际大小/哈希。
+
 ## 公开发布前待决定
 
 仓库API显示description/homepage均为空，项目license=null，未发现项目LICENSE，Releases和tags列表均为空。用户于本轮明确选择“暂不选择，列为公开发布前待决定事项”；不自行添加MIT或Apache授权。依赖声明见[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.txt)，须随本地候选继续分发。
