@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseSubtitle } from './parser';
 import { processDocument } from './process';
+import { wrapText } from './text';
 import { getOperationDefinition, operationParametersSchema, validateParameterValues, workflowOperations } from './operation-registry';
 import { analyzeWorkflow, createWorkflowStep, executeWorkflow, MAX_WORKFLOW_BYTES, workflowDefinitionSchema, type WorkflowDefinition, type WorkflowStep } from './workflow';
 
@@ -88,6 +89,14 @@ describe('preexecution format analysis', () => {
 });
 
 describe('in-memory linear execution', () => {
+  it('wraps an extreme Unicode line with bounded line lengths while preserving every character', () => {
+    const text = '字幕 😀 long line '.repeat(16384);
+    const wrapped = wrapText(text, 24);
+    expect(wrapped.replace(/\n/gu, '')).toBe(text);
+    expect(wrapped.split('\n').every(line => Array.from(line).length <= 24)).toBe(true);
+    expect(wrapText('one two three four five six', 14)).toBe('one two three \nfour five six');
+  });
+
   it('deletes blanks, replaces text and shifts the true remaining cue set', () => {
     const original = parseSubtitle(sample, 'lesson.srt').document;
     const snapshot = structuredClone(original);
@@ -137,5 +146,10 @@ describe('in-memory linear execution', () => {
     expect(() => executeWorkflow(document, flow([step('clean-spaces'), step('shift')]), {
       signal: controller.signal, onStepProgress: event => { if (event.stepIndex === 0 && event.status === 'success') controller.abort(); },
     })).toThrow('取消');
+  });
+
+  it('requires authoritative source spans for source-preserving Chinese execution', () => {
+    const document = parseSubtitle(sample, 'lesson.srt').document;
+    expect(() => executeWorkflow(document, flow([step('chinese')]))).toThrow('原文与正文位置');
   });
 });

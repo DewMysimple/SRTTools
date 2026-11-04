@@ -4,15 +4,13 @@ import {
 } from '../core';
 import type { ParseDiagnostic, SubtitleCue, SubtitleDocument } from '../core';
 import { safeFileName, uniqueOutputNames } from '../services/export-service';
-import type { ImportedFile } from '../services/file-service';
+import { MAX_IMPORT_BYTES, MAX_IMPORT_FILES, MAX_IMPORT_TOTAL_BYTES, type ImportedFile } from '../services/file-service';
 import type { ProcessedOutput, ProcessedTask, ProcessingOptions, ProcessingRequest } from '../services/processing-service';
 import { validateFileNamePattern } from '../services/settings-service';
 import { convertChineseSubtitle } from '../core/chinese-subtitle';
 import type { SubtitleBodySpan } from '../core/parser';
 import { buildSubtitleDiff } from '../core/diff/subtitle-diff';
 import { analyzeWorkflow, executeWorkflow, workflowDefinitionSchema, WorkflowExecutionError, type WorkflowStepProgress } from '../core/workflow';
-import { convertChineseText } from '../core/chinese';
-import { rewriteSubtitleBodies } from '../core/chinese-subtitle';
 
 interface ImportedDocument {
   document: SubtitleDocument;
@@ -34,6 +32,7 @@ function uniqueDiagnostics(diagnostics: ParseDiagnostic[]): ParseDiagnostic[] {
 
 function readDocument(file: ImportedFile, options: ProcessingOptions, captureBodies = false): ImportedDocument {
   if (file.error) throw new SubtitleError('READ_FAILED', file.error);
+  if (file.bytes.byteLength > MAX_IMPORT_BYTES || file.size > MAX_IMPORT_BYTES) throw new SubtitleError('INPUT_LIMIT', '文件超过 32 MiB，请拆分后再处理。');
   const decoded = decodeBytes(file.bytes, options.encoding);
   const suspectEncoding = decoded.text.includes('\ufffd') || decoded.text.includes('\0');
   const parsed = parseSubtitle(decoded.text, file.name, { captureBodies });
@@ -143,6 +142,15 @@ function serializeDocuments(documents: SubtitleDocument[], options: ProcessingOp
   return { outputs: uniqueOutputNames(outputs), diagnostics };
 }
 
+function preservedSourceDiagnostics(input: ImportedDocument): ParseDiagnostic[] {
+  const diagnostics = input.diagnostics.filter(diagnostic => diagnostic.code !== 'LOSSY_ASS' && diagnostic.code !== 'LOSSY_VTT')
+    .map(diagnostic => diagnostic.code === 'NONSTANDARD_TIME' ? { ...diagnostic, message: '原时间行使用非标准格式，本次保留原样。' } : diagnostic);
+  if (input.document.format === 'ass' || input.document.format === 'ssa') {
+    diagnostics.push({ severity: 'info', code: 'ASS_PREVIEW', message: '输出保留原样式和控制标记；预览仅显示通用字幕正文，不呈现样式效果。' });
+  }
+  return diagnostics;
+}
+
 function executeFile(request: ProcessingRequest, task: ProcessedTask): ProcessedTask {
   const file = request.files[0];
   const inputIndex = request.options.fileIndexes?.[file.id] ?? 1;
@@ -175,11 +183,7 @@ function executeFile(request: ProcessingRequest, task: ProcessedTask): Processed
       bytes: encodeOutput(result.text, request.options.outputEncoding, name, result.document.cues),
       document: result.document,
     }];
-    task.diagnostics = task.diagnostics.filter(diagnostic => diagnostic.code !== 'LOSSY_ASS' && diagnostic.code !== 'LOSSY_VTT')
-      .map(diagnostic => diagnostic.code === 'NONSTANDARD_TIME' ? { ...diagnostic, message: '原时间行使用非标准格式，本次保留原样。' } : diagnostic);
-    if (input.document.format === 'ass' || input.document.format === 'ssa') {
-      task.diagnostics.push({ severity: 'info', code: 'ASS_PREVIEW', message: '输出保留原样式和控制标记；预览仅显示通用字幕正文，不呈现样式效果。' });
-    }
+    task.diagnostics = preservedSourceDiagnostics(input);
     const changed = result.document.cues.filter((cue, position) => cue.text !== input.document.cues[position].text).length;
     task.summary = `简繁转换完成：${changed} / ${input.document.cues.length} 条正文变化；保留编号、时间、原换行与格式布局。`;
     return { ...task, status: 'success' };
@@ -215,21 +219,16 @@ function executeWorkflowFile(request: ProcessingRequest, task: ProcessedTask, co
   task.diagnostics = input.diagnostics;
   task.workflow = { stepSummaries: [] };
   assertCanExport(input, 'workflow');
-  const result = executeWorkflow(input.document, definition, context);
+  const result = executeWorkflow(input.document, definition, { ...context,
+    ...(fileAnalysis.layout === 'source' ? { source: { text: input.sourceText!, bodySpans: input.bodySpans, diagnostics: input.diagnostics } } : {}),
+  });
   task.workflow.stepSummaries = result.stepSummaries;
   const inputIndex = request.options.fileIndexes?.[file.id] ?? 1;
   if (fileAnalysis.layout === 'source') {
-    const enabled = definition.steps.filter(step => step.enabled);
-    const output = rewriteSubtitleBodies(input.sourceText!, { document: input.document, diagnostics: input.diagnostics, bodySpans: input.bodySpans }, text => {
-      for (const step of enabled) text = convertChineseText(text, step.params.direction as 's2t' | 't2s');
-      return text;
-    });
-    if (output.document.cues.some((cue, index) => cue.text !== result.document.cues[index]?.text)) {
-      throw new SubtitleError('UNSAFE_LAYOUT', '流程原文布局写回与内存结果不一致，已停止导出。');
-    }
+    if (result.sourceText === undefined) throw new SubtitleError('UNSAFE_LAYOUT', '流程未生成经过验证的原文布局结果，已停止导出。');
     const name = outputName(file.name, input.document.format, request.options, inputIndex);
-    task.outputs = [{ name, text: output.text, bytes: encodeOutput(output.text, request.options.outputEncoding, name, output.document.cues), document: output.document }];
-    task.diagnostics = task.diagnostics.filter(diagnostic => diagnostic.code !== 'LOSSY_ASS' && diagnostic.code !== 'LOSSY_VTT');
+    task.outputs = [{ name, text: result.sourceText, bytes: encodeOutput(result.sourceText, request.options.outputEncoding, name, result.document.cues), document: result.document }];
+    task.diagnostics = preservedSourceDiagnostics(input);
   } else {
     const outputDocument = { ...result.document, format: fileAnalysis.outputFormat!, fileName: file.name.replace(/\.[^.]+$/u, `.${fileAnalysis.outputFormat}`) };
     const serialized = serializeDocuments([outputDocument], request.options, inputIndex);
@@ -333,6 +332,9 @@ export function executeProcessingRequest(request: ProcessingRequest, context: { 
     task.inputSize = request.files.reduce((sum, file) => sum + file.size, 0);
   }
   try {
+    if (request.files.length > MAX_IMPORT_FILES || request.files.reduce((total, file) => total + file.bytes.byteLength, 0) > MAX_IMPORT_TOTAL_BYTES) {
+      throw new SubtitleError('INPUT_LIMIT', '处理队列最多 100 个文件、总计 128 MiB，请分批处理。');
+    }
     return request.kind === 'combined' ? executeCombined(request, task)
       : request.kind === 'workflow' ? executeWorkflowFile(request, task, context) : executeFile(request, task);
   } catch (error) {

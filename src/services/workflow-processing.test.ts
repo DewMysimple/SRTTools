@@ -4,6 +4,8 @@ import { createWorkflowProcessor, MAX_WORKER_DURATION_MS, runWorkerRequest, type
 import type { ImportedFile } from './file-service';
 import { executeProcessingRequest } from '../workers/worker-logic';
 import * as core from '../core';
+import * as chinese from '../core/chinese';
+import * as parser from '../core/parser';
 
 const options: ProcessingOptions = { outputEncoding: 'utf-8', lineEnding: 'LF', fileNamePattern: '{name}_processed' };
 const source = '4\n00:00:01,000 --> 00:00:03,000\n   \n\n7\n00:00:04,000 --> 00:00:06,000\n  Hello  世界 😀  \nSecond line\n';
@@ -80,6 +82,14 @@ describe('one-read workflow worker integration', () => {
     });
     expect(task).toMatchObject({ status: 'cancelled', errorCode: 'USER_CANCELLED', outputs: [] });
   });
+
+  it('retains the published file and queue limits even when called outside the UI importer', async () => {
+    const workflow = flow([step('clean-spaces')]);
+    const oversized = { ...file(), size: 32 * 1024 * 1024 + 1 };
+    expect(executeProcessingRequest(request(workflow, oversized))).toMatchObject({ status: 'failed', errorCode: 'INPUT_LIMIT', outputs: [] });
+    const process = createWorkflowProcessor(async job => executeProcessingRequest(job));
+    await expect(process(Array.from({ length: 101 }, (_, index) => file(`${index}.srt`)), workflow, options)).rejects.toThrow('100');
+  });
 });
 
 describe('workflow format-layout boundaries', () => {
@@ -91,6 +101,54 @@ describe('workflow format-layout boundaries', () => {
     expect(task.outputs[0].text).toBe(ass.replace('软件发展', '軟件發展').replace('\\N测试', '\\N測試'));
     expect(task.outputs[0].name).toBe(`styled_processed.${extension}`);
     expect(task.diagnostics.some(item => item.code === 'LOSSY_ASS')).toBe(false);
+    expect(task.diagnostics.some(item => item.code === 'ASS_PREVIEW')).toBe(true);
+  });
+
+  it.each(['ass', 'ssa'])('keeps OpenCC phrase boundaries across %s override blocks identical to the standalone tool', extension => {
+    const source = '[Script Info]\nTitle: 保留\n[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.23,0:00:02.34,头{\\i1}发\n';
+    const input = file(`boundary.${extension}`, source);
+    const conversion = flow([step('chinese')]);
+    const standalone = executeProcessingRequest({ ...request(conversion, input), kind: 'file', operation: 'chinese', params: { direction: 's2t' } });
+    const workflow = executeProcessingRequest(request(conversion, input));
+    expect(workflow.status).toBe('success');
+    expect(workflow.outputs[0].bytes).toEqual(standalone.outputs[0].bytes);
+    expect(workflow.outputs[0].text).toBe(source.replace('头{\\i1}发', '頭{\\i1}發'));
+    expect(workflow.outputs[0].document?.cues[0].text).toBe('頭發');
+    expect(workflow.workflow?.stepSummaries[0].changedCount).toBe(1);
+  });
+
+  it.each(['ass', 'ssa'])('converts each raw %s body once per enabled Chinese step and parses only input plus final output', extension => {
+    const source = '[Script Info]\nTitle: 保留\n[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.23,0:00:02.34,头{\\i1}发\n';
+    const convert = vi.spyOn(chinese, 'convertChineseText');
+    const parse = vi.spyOn(parser, 'parseSubtitle');
+    const definition = flow([step('chinese', { direction: 's2t' }), { ...step('renumber'), enabled: false }, step('chinese', { direction: 't2s' })]);
+    const task = executeProcessingRequest(request(definition, file(`repeated.${extension}`, source)));
+    expect(task.status).toBe('success');
+    expect(task.outputs[0].text).toBe(source);
+    expect(task.outputs[0].document?.cues[0].text).toBe('头发');
+    expect(task.workflow?.stepSummaries.map(summary => [summary.status, summary.changedCount])).toEqual([['success', 1], ['skipped', 0], ['success', 1]]);
+    expect(convert).toHaveBeenCalledTimes(2);
+    expect(parse).toHaveBeenCalledTimes(2);
+    convert.mockRestore(); parse.mockRestore();
+  });
+
+  it('uses decoded CSV body values and protects VTT inline timestamps and HTML attributes', () => {
+    const csv = 'index,start,end,text\r\n9,00:00:01.000,00:00:03.000,"头<font title=""头发"">发</font>"\r\n';
+    const table = executeProcessingRequest(request(flow([step('chinese')]), file('boundary.csv', csv)));
+    expect(table.status).toBe('success');
+    expect(table.outputs[0].text).toBe(csv.replace('头<font title=""头发"">发', '頭<font title=""头发"">發'));
+    const vtt = 'WEBVTT\n\nNOTE 头发 metadata\n\ncue-A\n00:01.000 --> 00:03.000 position:40%\n头<00:00:01.500>发\n';
+    const web = executeProcessingRequest(request(flow([step('chinese')]), file('boundary.vtt', vtt)));
+    expect(web.status).toBe('success');
+    expect(web.outputs[0].text).toBe(vtt.replace('头<00:00:01.500>发', '頭<00:00:01.500>發'));
+  });
+
+  it('describes preserved nonstandard time lines accurately in source-layout diagnostics', () => {
+    const source = 'WEBVTT\n\n9\n00:00:01,000 --> 00:00:03,000\n软件\n';
+    const task = executeProcessingRequest(request(flow([step('chinese')]), file('nonstandard.vtt', source)));
+    expect(task.status).toBe('success');
+    expect(task.outputs[0].text).toContain('00:00:01,000 --> 00:00:03,000');
+    expect(task.diagnostics.find(item => item.code === 'NONSTANDARD_TIME')?.message).toContain('本次保留原样');
   });
 
   it('preserves VTT cue settings and CSV quoting for pure Chinese workflows', () => {

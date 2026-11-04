@@ -3,6 +3,8 @@ import { createId, SubtitleError, type ParseDiagnostic, type SubtitleDocument, t
 import { defaultOperationParameters, getOperationDefinition, operationParametersSchema, workflowOperationIds, type OperationEffects, type WorkflowOperationId } from './operation-registry';
 import { processDocument } from './process';
 import { convertChineseText } from './chinese';
+import { readSubtitleBodies, rewriteSubtitleBodies } from './chinese-subtitle';
+import type { SubtitleBodySpan } from './parser';
 
 export { type WorkflowOperationId } from './operation-registry';
 export const MAX_WORKFLOW_STEPS = 20;
@@ -64,8 +66,9 @@ export interface WorkflowStepProgress {
 }
 export interface WorkflowExecutionContext {
   signal?: AbortSignal; onStepProgress?: (progress: WorkflowStepProgress) => void;
+  source?: { text: string; bodySpans?: SubtitleBodySpan[]; diagnostics: ParseDiagnostic[] };
 }
-export interface WorkflowExecutionResult { document: SubtitleDocument; diagnostics: ParseDiagnostic[]; stepSummaries: WorkflowStepSummary[] }
+export interface WorkflowExecutionResult { document: SubtitleDocument; diagnostics: ParseDiagnostic[]; stepSummaries: WorkflowStepSummary[]; sourceText?: string }
 
 export class WorkflowExecutionError extends SubtitleError {
   constructor(code: string, message: string, readonly stepSummaries: WorkflowStepSummary[], readonly diagnostics: ParseDiagnostic[]) {
@@ -127,6 +130,9 @@ export function executeWorkflow(input: SubtitleDocument, value: WorkflowDefiniti
   const definition = workflowDefinitionSchema.parse(value);
   const analysis = analyzeWorkflow(definition, [{ id: input.id, name: input.fileName }]);
   if (!analysis.executable || !analysis.files[0]?.applicable) throw new SubtitleError('INCOMPATIBLE_WORKFLOW', analysis.files[0]?.reason ?? analysis.issues[0]?.message ?? '此流程不能执行。');
+  const sourceLayout = analysis.files[0].layout === 'source';
+  if (sourceLayout && !context.source) throw new SubtitleError('SOURCE_LAYOUT_REQUIRED', '保留布局的简繁流程需要原文与正文位置，请通过文件处理入口执行。');
+  let sourceBodies = sourceLayout ? readSubtitleBodies(context.source!.text, { document: input, diagnostics: context.source!.diagnostics, bodySpans: context.source!.bodySpans }) : undefined;
   let document = input;
   const stepSummaries: WorkflowStepSummary[] = [];
   const diagnostics: ParseDiagnostic[] = [];
@@ -144,22 +150,47 @@ export function executeWorkflow(input: SubtitleDocument, value: WorkflowDefiniti
     active(context.signal);
     try {
       const before = document;
-      const result = step.operation === 'chinese'
+      let changedCount: number;
+      let removedCount: number;
+      let operationDiagnostics: ParseDiagnostic[];
+      if (sourceBodies) {
+        // The source body is authoritative: removing ASS overrides before OpenCC
+        // would change phrase boundaries, for example 头{\i1}发 versus 头发.
+        let changed = 0;
+        sourceBodies = sourceBodies.map((body, position) => {
+          active(context.signal);
+          let converted: string;
+          try { converted = convertChineseText(body, step.params.direction as 's2t' | 't2s'); }
+          catch (error) {
+            if (!(error instanceof SubtitleError)) throw error;
+            throw new SubtitleError(error.code, `第 ${input.cues[position].index} 条字幕：${error.message}`);
+          }
+          if (converted !== body) changed++;
+          return converted;
+        });
+        changedCount = changed;
+        removedCount = 0;
+        operationDiagnostics = [];
+      } else {
+        const result = step.operation === 'chinese'
         ? { documents: [{ ...document, modified: true, cues: document.cues.map(cue => {
           active(context.signal);
           return { ...cue, text: convertChineseText(cue.text, step.params.direction as 's2t' | 't2s') };
         }) }], diagnostics: [] as ParseDiagnostic[] }
         : processDocument(document, step.operation, step.params);
-      active(context.signal);
-      document = result.documents[0];
-      const afterIds = new Set(document.cues.map(cue => cue.id));
-      const previous = new Map(before.cues.map(cue => [cue.id, cue]));
-      const removedCount = before.cues.filter(cue => !afterIds.has(cue.id)).length;
-      const changedCount = removedCount + document.cues.filter(cue => {
+        active(context.signal);
+        document = result.documents[0];
+        const afterIds = new Set(document.cues.map(cue => cue.id));
+        const previous = new Map(before.cues.map(cue => [cue.id, cue]));
+        removedCount = before.cues.filter(cue => !afterIds.has(cue.id)).length;
+        changedCount = removedCount + document.cues.filter(cue => {
         const original = previous.get(cue.id);
         return !original || original.text !== cue.text || original.index !== cue.index || original.startMs !== cue.startMs || original.endMs !== cue.endMs;
-      }).length;
-      const stepDiagnostics = result.diagnostics.map(diagnostic => ({ ...diagnostic, stepId: step.id, stepIndex, operation: step.operation }));
+        }).length;
+        operationDiagnostics = result.diagnostics;
+      }
+      active(context.signal);
+      const stepDiagnostics = operationDiagnostics.map(diagnostic => ({ ...diagnostic, stepId: step.id, stepIndex, operation: step.operation }));
       diagnostics.push(...stepDiagnostics);
       const summary: WorkflowStepSummary = { ...base, status: 'success', changedCount, removedCount,
         warningCount: stepDiagnostics.filter(item => item.severity === 'warning').length,
@@ -177,5 +208,13 @@ export function executeWorkflow(input: SubtitleDocument, value: WorkflowDefiniti
     }
   }
   active(context.signal);
+  if (sourceBodies) {
+    // Write once and parse once at the end, using only already converted body values.
+    const output = rewriteSubtitleBodies(context.source!.text, {
+      document: input, diagnostics: context.source!.diagnostics, bodySpans: context.source!.bodySpans,
+    }, (_text, _cue, position) => sourceBodies![position]);
+    active(context.signal);
+    return { document: output.document, sourceText: output.text, diagnostics, stepSummaries };
+  }
   return { document, diagnostics, stepSummaries };
 }
