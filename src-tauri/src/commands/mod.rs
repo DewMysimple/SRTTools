@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 use std::{
     collections::HashSet,
     fs,
-    io::Read,
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -18,6 +18,7 @@ const IMPORT_BATCH_LIMIT: u64 = 128 * 1024 * 1024;
 const IMPORT_COUNT_LIMIT: usize = 100;
 const OUTPUT_LIMIT: usize = 256 * 1024 * 1024;
 const STORE_NAME: &str = "subtitle-tools.json";
+const STORE_RECOVERY_NAME: &str = "subtitle-tools-recovery.json";
 const PRESET_KEY: &str = "tool-presets-v1";
 const PRESET_LIMIT: usize = 256 * 1024;
 static STORE_TRANSACTION: Mutex<()> = Mutex::new(());
@@ -419,6 +420,11 @@ fn validate_store_key(key: &str) -> Result<(), String> {
 
 fn local_values(app: &AppHandle) -> Result<(Map<String, Value>, PathBuf), String> {
     let path = resolve_store_path(app, STORE_NAME).map_err(|e| format!("无法定位本地设置：{e}"))?;
+    if let Some(values) =
+        recovery_values(&path).map_err(|e| format!("无法读取设置恢复记录：{e}"))?
+    {
+        return Ok((values, path));
+    }
     // Load explicitly to detect read failures, and release the temporary Store
     // handle so the plugin cannot rewrite the file on application exit.
     let store = app
@@ -437,6 +443,55 @@ fn local_values(app: &AppHandle) -> Result<(Map<String, Value>, PathBuf), String
         }
         Err(StoreError::Deserialize(_)) => Err("本地设置文件损坏，请备份后恢复。".into()),
         Err(error) => Err(format!("无法加载本地设置：{error}")),
+    }
+}
+
+fn recovery_values(path: &Path) -> io::Result<Option<Map<String, Value>>> {
+    match fs::read(path.with_file_name(STORE_RECOVERY_NAME)) {
+        // An interrupted journal write leaves the primary file untouched.
+        Ok(bytes) => Ok(serde_json::from_slice(&bytes).ok()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn clear_store_recovery(path: &Path) -> io::Result<()> {
+    match fs::remove_file(path.with_file_name(STORE_RECOVERY_NAME)) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
+fn synced_store_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let mut file = fs::File::create(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+fn write_store_with_recovery(
+    path: &Path,
+    previous: &Map<String, Value>,
+    content: &[u8],
+) -> io::Result<()> {
+    // A valid journal is the committed state until the complete new Store has
+    // been synced and the journal is removed. Leave it in place on any failure.
+    if recovery_values(path)?.is_none() {
+        let old = serde_json::to_vec_pretty(previous)?;
+        synced_store_write(&path.with_file_name(STORE_RECOVERY_NAME), &old)?;
+    }
+    synced_store_write(path, content)?;
+    clear_store_recovery(path)
+}
+
+fn supports_store_write_fallback(error: &io::Error) -> bool {
+    #[cfg(windows)]
+    return error.raw_os_error()
+        == Some(windows_sys::Win32::Foundation::ERROR_NOT_SAME_DEVICE as i32);
+
+    #[cfg(not(windows))]
+    {
+        let _ = error;
+        false
     }
 }
 
@@ -475,11 +530,23 @@ pub fn set_local_value(
         .lock()
         .map_err(|_| "本地设置正在恢复，请重启应用。")?;
     let (mut values, path) = local_values(&app)?;
-    values.insert(key, value);
+    let previous = values.insert(key.clone(), value);
     let content = serde_json::to_vec_pretty(&values).map_err(|e| e.to_string())?;
-    safe_files::replace_local_store(&path, &content)
-        .map_err(|e| format!("无法保存本地设置：{e}"))?;
-    Ok(())
+    match safe_files::replace_local_store(&path, &content) {
+        Ok(()) => clear_store_recovery(&path),
+        Err(error) if supports_store_write_fallback(&error) => {
+            // Some Windows encrypted AppData folders reject same-volume renames.
+            // Preserve the committed snapshot before writing the fixed file in place.
+            if let Some(value) = previous {
+                values.insert(key, value);
+            } else {
+                values.remove(&key);
+            }
+            write_store_with_recovery(&path, &values, &content)
+        }
+        Err(error) => Err(error),
+    }
+    .map_err(|e| format!("无法保存本地设置：{e}"))
 }
 
 #[cfg(test)]
@@ -524,6 +591,40 @@ mod tests {
         assert!(validate_store_key("tool-presets-v1").is_ok());
         assert!(validate_store_key("tool-presets-v2").is_err());
         assert!(validate_store_key("../secret.json").is_err());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn journal_preserves_committed_store_until_in_place_write_succeeds() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let fixture = ImportFixture::new("json");
+        let path = &fixture.0;
+        // Isolate the fixed journal name from other tests and applications.
+        let directory = path.with_extension("dir");
+        fs::create_dir(&directory).unwrap();
+        let store = directory.join(STORE_NAME);
+        let previous =
+            serde_json::from_str(r#"{"settings":{"theme":"dark"},"history":[]}"#).unwrap();
+        let next = br#"{"settings":{"theme":"dark"},"history":[],"tool-presets-v1":{"schemaVersion":1,"presets":[]}}"#;
+        synced_store_write(&store, &serde_json::to_vec(&previous).unwrap()).unwrap();
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&store)
+            .unwrap();
+        assert!(write_store_with_recovery(&store, &previous, next).is_err());
+        assert_eq!(recovery_values(&store).unwrap(), Some(previous.clone()));
+        drop(lock);
+        assert_eq!(
+            serde_json::from_slice::<Map<String, Value>>(&fs::read(&store).unwrap()).unwrap(),
+            previous
+        );
+        write_store_with_recovery(&store, &previous, next).unwrap();
+        assert_eq!(recovery_values(&store).unwrap(), None);
+        assert_eq!(fs::read(&store).unwrap(), next);
+        fs::remove_file(&store).unwrap();
+        fs::remove_dir(&directory).unwrap();
     }
 
     #[test]
