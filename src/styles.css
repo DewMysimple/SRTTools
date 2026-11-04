@@ -225,7 +225,7 @@ input[type="checkbox"] { accent-color: var(--primary); width: 14px; height: 14px
 .preview-heading { margin-top: 21px; }
 .preview-heading h3 { font-size: 13px; }
 .preview-heading h3 span { font-size: 11px; font-weight: 400; margin-left: 6px; }
-.preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .preview-grid > div { min-width: 0; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
 .preview-label { background: var(--surface-muted); padding: 8px 12px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 .preview-label.after { background: var(--success-soft); color: var(--success); }
@@ -237,6 +237,28 @@ input[type="checkbox"] { accent-color: var(--primary); width: 14px; height: 14px
 .cue code { font-size: 11px; overflow-wrap: anywhere; }
 .cue p { font-size: 12px; line-height: 1.85; margin-top: 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .cue em { color: var(--text-muted); font-style: normal; }
+.diff-preview { margin-top: 10px; }
+.diff-summary { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-muted); font-size: 12px; }
+.diff-summary dt, .diff-summary dd { display: inline; }
+.diff-summary dd { font-weight: 650; }
+.diff-note { color: var(--text); font-size: 11px; margin: 7px 0; }
+.diff-filters { margin: 10px 0; }
+.diff-filters button[aria-pressed="true"] { color: var(--text); background: var(--primary-soft); border-color: var(--primary); }
+.diff-table { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 7px; }
+.diff-table:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.diff-headings, .diff-row { gap: 0; }
+.diff-headings { position: sticky; top: 0; z-index: 1; }
+.diff-headings .preview-label { color: var(--text); }
+.diff-row + .diff-row { border-top: 1px solid var(--border); }
+.diff-row > div { border: 0; border-radius: 0; }
+.diff-row > div + div, .diff-headings > span + span { border-left: 1px solid var(--border); }
+.diff-row .diff-placeholder { padding: 12px; font-size: 12px; color: var(--text); background: var(--surface-muted); height: 100%; }
+.diff-insert, .diff-delete, .diff-field { color: var(--text); border-radius: 3px; }
+.diff-insert { background: var(--success-soft); text-decoration: underline; }
+.diff-delete { background: var(--danger-soft); text-decoration: line-through; }
+.cue > div > .diff-field { padding-inline: 3px; color: var(--text); background: var(--warning-soft); }
+.diff-labels { display: flex; flex-wrap: wrap; gap: 5px; padding: 0; margin: 6px 0 0; list-style: none; }
+.diff-labels > li { padding: 1px 5px; background: var(--primary-soft); border-radius: 3px; font-size: 11px; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 13px; font-size: 12px; color: var(--text-muted); margin-top: 13px; }
 .text-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 400px; overflow: auto; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 7px; padding: 15px; font-size: 12px; line-height: 1.9; margin: 15px 0 0; }
 .export-panel { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 20px; }

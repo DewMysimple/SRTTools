@@ -100,7 +100,7 @@ function serializeDocuments(documents: SubtitleDocument[], options: ProcessingOp
       name: outputName(document.fileName, document.format, options, inputIndex),
       text: result.text,
       bytes: encodeText(result.text, options.outputEncoding),
-      document,
+      document: result.previewCues && { ...document, cues: result.previewCues, lineEnding: options.lineEnding },
     };
   });
   return { outputs: uniqueOutputNames(outputs), diagnostics };

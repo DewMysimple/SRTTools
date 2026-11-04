@@ -1,8 +1,12 @@
-import { SubtitleError, type LineEnding, type SubtitleDocument, type SubtitleFormat } from './models';
+import { SubtitleError, type LineEnding, type SubtitleCue, type SubtitleDocument, type SubtitleFormat } from './models';
 import { assertValidTimes, formatTimestamp } from './time';
 import { parseSubtitle } from './parser';
 
-export function serializeSubtitle(document: SubtitleDocument, format: SubtitleFormat = document.format, lineEnding: LineEnding = document.lineEnding): { text: string; warnings: string[] } {
+function assMilliseconds(milliseconds: number): number {
+  return Math.round(milliseconds / 10) * 10;
+}
+
+export function serializeSubtitle(document: SubtitleDocument, format: SubtitleFormat = document.format, lineEnding: LineEnding = document.lineEnding): { text: string; warnings: string[]; previewCues?: SubtitleCue[] } {
   assertValidTimes(document.cues);
   const warnings: string[] = [];
   let text: string;
@@ -26,7 +30,7 @@ export function serializeSubtitle(document: SubtitleDocument, format: SubtitleFo
     }
     case 'ass': {
       warnings.push('ASS 输出使用统一默认样式，时间会四舍五入到 10 毫秒；原字体、颜色、位置与特效不会恢复。');
-      const assTime = (ms: number) => formatTimestamp(Math.round(ms / 10) * 10, '.').replace(/^0(?=\d:)/, '').slice(0, -1);
+      const assTime = (ms: number) => formatTimestamp(assMilliseconds(ms), '.').replace(/^0(?=\d:)/, '').slice(0, -1);
       text = '[Script Info]\nTitle: Subtitle Tools\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,20,20,40,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n';
       text += cues.map(cue => {
         if (Math.round(cue.endMs / 10) <= Math.round(cue.startMs / 10)) throw new SubtitleError('PRECISION_LOSS', `第 ${cue.index} 条字幕短于 ASS 时间精度，无法导出。请先增加时长。`);
@@ -51,5 +55,14 @@ export function serializeSubtitle(document: SubtitleDocument, format: SubtitleFo
     });
     if (!same || parsed.diagnostics.some(issue => issue.severity === 'error')) throw new SubtitleError('UNREPRESENTABLE_TEXT', `正文中的空白行或时间行与 ${format.toUpperCase()} 结构存在歧义，无法无损导出。请清理正文中的空白行，或选择 CSV 格式保留原文。`);
   }
-  return { text, warnings };
+  // Expose the fields written by the serializer without changing the engine's cues or their IDs.
+  if (format === 'txt') return { text, warnings };
+  const previewCues = cues.map((cue, position) => ({
+    ...cue,
+    index: position + 1,
+    startMs: format === 'ass' ? assMilliseconds(cue.startMs) : cue.startMs,
+    endMs: format === 'ass' ? assMilliseconds(cue.endMs) : cue.endMs,
+    text: cue.text.replace(/\r\n?/g, '\n'),
+  }));
+  return { text, warnings, previewCues };
 }

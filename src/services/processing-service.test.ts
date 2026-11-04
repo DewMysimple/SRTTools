@@ -44,6 +44,29 @@ describe('file → processing → export integration', () => {
     expect(task.document?.cues[0].text).toBe('Hello 世界\nSecond line');
   });
 
+  it.each(['srt', 'vtt', 'csv', 'ass'])('shows actual serialized %s values while retaining lineage', (format) => {
+    const input = file('source.srt', '9\n00:00:01,234 --> 00:00:02,345\n字幕 😀\n下一行\n');
+    const task = executeProcessingRequest({
+      kind: 'file', files: [input], operation: 'convert', params: { format }, options,
+    });
+    expect(task.status).toBe('success');
+    const [output] = task.outputs;
+    const parsed = parseSubtitle(decodeBytes(output.bytes).text, output.name);
+    const before = task.document?.cues[0];
+    expect(before).toMatchObject({ index: 9, startMs: 1234, endMs: 2345 });
+    expect(output.document?.cues).toEqual([{ ...parsed.document.cues[0], id: before?.id }]);
+  });
+
+  it('keeps TXT extraction and JSON reports as text-only previews', () => {
+    for (const operation of ['extract', 'info']) {
+      const task = executeProcessingRequest({ kind: 'file', files: [file()], operation, params: {}, options });
+      expect(task.status).toBe('success');
+      const [output] = task.outputs;
+      expect(output.document).toBeUndefined();
+      expect(decodeBytes(output.bytes).text).toBe(output.text);
+    }
+  });
+
   it('reports parse damage and blocks output that could lose malformed content', () => {
     const input = file('broken.srt', `${sample}\n2\nnot a timestamp\nDo not silently discard me`);
     const failed = executeProcessingRequest({ kind: 'file', files: [input], operation: 'renumber', params: {}, options });
