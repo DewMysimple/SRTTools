@@ -1069,6 +1069,229 @@ mod tests {
     }
 
     #[test]
+    fn finish_cancels_observed_in_flight_io_without_publishing_partial_output_and_allows_retry() {
+        use std::{
+            io,
+            os::windows::io::AsRawHandle,
+            thread,
+            time::{Duration, Instant},
+        };
+        use windows_sys::Win32::{
+            Foundation::ERROR_IO_INCOMPLETE,
+            Storage::FileSystem::{
+                ReadDirectoryChangesW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OVERLAPPED,
+                FILE_NOTIFY_CHANGE_FILE_NAME, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+            },
+            System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED},
+        };
+
+        // Queue the real directory notification before starting the writer. A pending OVERLAPPED
+        // request, rather than a sleep or a writer test hook, establishes observer readiness.
+        struct DirectoryWatch {
+            directory: File,
+            overlapped: Box<OVERLAPPED>,
+            _buffer: Vec<u32>, // DWORD alignment and lifetime are required by ReadDirectoryChangesW.
+            pending: bool,
+        }
+        impl DirectoryWatch {
+            fn new(path: &Path) -> io::Result<Self> {
+                let directory = fs::OpenOptions::new()
+                    .read(true)
+                    .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+                    .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED)
+                    .open(path)?;
+                let mut watch = Self {
+                    directory,
+                    overlapped: Box::new(unsafe { std::mem::zeroed() }),
+                    _buffer: vec![0; 4096],
+                    pending: false,
+                };
+                let queued = unsafe {
+                    ReadDirectoryChangesW(
+                        watch.directory.as_raw_handle(),
+                        watch._buffer.as_mut_ptr().cast(),
+                        (watch._buffer.len() * 4) as u32,
+                        0,
+                        FILE_NOTIFY_CHANGE_FILE_NAME,
+                        std::ptr::null_mut(),
+                        watch.overlapped.as_mut(),
+                        None,
+                    )
+                };
+                if queued == 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                watch.pending = true;
+                assert!(
+                    !watch.signaled()?,
+                    "directory notification was not pending before writer start"
+                );
+                Ok(watch)
+            }
+            fn signaled(&mut self) -> io::Result<bool> {
+                let mut transferred = 0;
+                let result = unsafe {
+                    GetOverlappedResult(
+                        self.directory.as_raw_handle(),
+                        self.overlapped.as_ref(),
+                        &mut transferred,
+                        0,
+                    )
+                };
+                if result != 0 {
+                    self.pending = false;
+                    return Ok(true);
+                }
+                let error = io::Error::last_os_error();
+                if error.raw_os_error() == Some(ERROR_IO_INCOMPLETE as i32) {
+                    Ok(false)
+                } else {
+                    Err(error)
+                }
+            }
+        }
+        impl Drop for DirectoryWatch {
+            fn drop(&mut self) {
+                if self.pending {
+                    // An observation failure must also cancel/drain native IO before its buffer drops.
+                    unsafe {
+                        CancelIoEx(self.directory.as_raw_handle(), self.overlapped.as_ref());
+                        let mut transferred = 0;
+                        GetOverlappedResult(
+                            self.directory.as_raw_handle(),
+                            self.overlapped.as_ref(),
+                            &mut transferred,
+                            1,
+                        );
+                    }
+                }
+            }
+        }
+
+        const LARGE_BYTES: usize = 128 * 1024 * 1024;
+        let fixture = Fixture::new();
+        let exports = FolderExports::default();
+        exports
+            .prepare(
+                ID,
+                &fixture.output,
+                vec![
+                    fixture.entry("retained", "retained.srt"),
+                    fixture.entry("in-flight", "in-flight.srt"),
+                ],
+                &fixture.access,
+            )
+            .unwrap();
+        exports
+            .write(ID, "retained", b"prior complete result")
+            .unwrap();
+        // Allocate before arming the observer so a pending watch directly precedes actual file IO.
+        let bytes = vec![0x5au8; LARGE_BYTES];
+        let mut watch = DirectoryWatch::new(&fixture.output).unwrap();
+        let writer_exports = exports.clone();
+        let writer = thread::spawn(move || writer_exports.write(ID, "in-flight", &bytes));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let observed = (|| -> Result<u64, String> {
+            while !watch.signaled().map_err(|error| error.to_string())? {
+                if writer.is_finished() {
+                    return Err("writer finished before staged creation was observed".into());
+                }
+                if Instant::now() >= deadline {
+                    return Err("timed out waiting for staged creation notification".into());
+                }
+                thread::yield_now();
+            }
+            loop {
+                for entry in fs::read_dir(&fixture.output).map_err(|error| error.to_string())? {
+                    let entry = entry.map_err(|error| error.to_string())?;
+                    let name = entry.file_name();
+                    let name = name.to_string_lossy();
+                    if name.starts_with(".subtitle-tools-") && name.ends_with(".tmp") {
+                        // Enumeration can retain zero length until close. Query the live handle,
+                        // sharing all modes so the observer cannot block publication or cleanup.
+                        let observed_file = fs::OpenOptions::new()
+                            .read(true)
+                            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+                            .open(entry.path())
+                            .map_err(|error| error.to_string())?;
+                        let length = observed_file
+                            .metadata()
+                            .map_err(|error| error.to_string())?
+                            .len();
+                        if length >= 64 * 1024
+                            && length < LARGE_BYTES as u64
+                            && !writer.is_finished()
+                        {
+                            return Ok(length);
+                        }
+                    }
+                }
+                if writer.is_finished() {
+                    return Err(
+                        "writer finished without observing a partially written staged file".into(),
+                    );
+                }
+                if Instant::now() >= deadline {
+                    return Err("timed out waiting for the first completed 64 KiB write".into());
+                }
+                thread::yield_now();
+            }
+        })();
+        let cancellation_started = Instant::now();
+        // Always finish and join, including an observation failure; never leak test file IO/handles.
+        let finish = exports.finish(ID);
+        let result = writer.join().expect("real writer thread panicked");
+        let cancel_elapsed = cancellation_started.elapsed();
+        drop(watch);
+        let observed_bytes = observed.expect("in-flight cancellation was not actually observed");
+        finish.unwrap();
+        let cancelled =
+            result.expect_err("observed in-flight cancellation falsely reported success");
+        assert!(
+            cancelled.contains("取消"),
+            "expected cancellation after {observed_bytes} bytes, got {cancelled}"
+        );
+        let remaining: Vec<_> = fs::read_dir(&fixture.output)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            remaining,
+            [std::ffi::OsString::from("retained.srt")],
+            "partial final/staging/guard files remain"
+        );
+        assert_eq!(
+            fs::read(fixture.output.join("retained.srt")).unwrap(),
+            b"prior complete result"
+        );
+        assert_eq!(fs::read(&fixture.source).unwrap(), b"original subtitle");
+        let moved = fixture.root.join("released-after-in-flight-cancel");
+        fs::rename(&fixture.output, &moved).unwrap();
+        fs::rename(&moved, &fixture.output).unwrap();
+        exports
+            .prepare(
+                ID,
+                &fixture.output,
+                vec![fixture.entry("in-flight", "in-flight.srt")],
+                &fixture.access,
+            )
+            .unwrap();
+        exports
+            .write(ID, "in-flight", b"fresh retry completed")
+            .unwrap();
+        exports.finish(ID).unwrap();
+        assert_eq!(
+            fs::read(fixture.output.join("in-flight.srt")).unwrap(),
+            b"fresh retry completed"
+        );
+        assert_eq!(
+            fs::read(fixture.output.join("retained.srt")).unwrap(),
+            b"prior complete result"
+        );
+        println!("real Windows staged IO cancellation: observed {observed_bytes}/{LARGE_BYTES} bytes; finish+join {} microseconds; retained result/source unchanged; no temporary or partial final; handles released; fresh retry passed", cancel_elapsed.as_micros());
+    }
+
+    #[test]
     fn non_deletable_sentinel_prevents_in_place_reparse_mutation_until_session_finishes() {
         use std::os::windows::io::AsRawHandle;
         use windows_sys::Win32::{

@@ -2,8 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import JSZip from 'jszip';
 
 /** Browser contract only; actual Windows dialogs, paths and byte protection have separate native gates. */
-async function nativeOutputContract(page: Page, processingFailure = false) {
-  await page.addInitScript(({ processingFailure }) => {
+async function nativeOutputContract(page: Page, processingFailure = false, cancelExport = false) {
+  await page.addInitScript(({ processingFailure, cancelExport }) => {
     const browser = window as unknown as Record<string, unknown>;
     const values: Record<string, unknown> = {};
     const bytes = Array.from(new TextEncoder().encode('9\n00:00:01,000 --> 00:00:02,000\n  中文   正文  \n'));
@@ -14,7 +14,8 @@ async function nativeOutputContract(page: Page, processingFailure = false) {
     ];
     const prepared: Array<Array<{ id: string; relativePath: string; sourcePath: string }>> = [];
     const writes: Array<{ id: string; bytes: number[] }> = [];
-    let failOnce = !processingFailure;
+    let failOnce = !processingFailure && !cancelExport;
+    let heldWrite = false; let rejectWrite: ((error: Error) => void) | undefined;
     if (processingFailure) {
       const original = Worker.prototype.postMessage; let failed = false;
       Worker.prototype.postMessage = function(message: unknown) {
@@ -54,17 +55,18 @@ async function nativeOutputContract(page: Page, processingFailure = false) {
           if (command === 'write_folder_export') {
             const entry = sessions.get(String(args.exportId))!.find(entry => entry.id === args.id)!;
             writes.push({ id: String(args.id), bytes: args.bytes as number[] });
+            if (cancelExport && !heldWrite && writes.length === 2) { heldWrite = true; browser.exportWritePending = true; return new Promise((_resolve, reject) => { rejectWrite = reject; }); }
             if (failOnce && entry.relativePath.includes('S02')) { failOnce = false; throw '目标文件被锁定，其他结果仍可导出。'; }
             return { path: `E:\\独立输出\\${entry.relativePath.replaceAll('/', '\\')}`, relativePath: entry.relativePath };
           }
-          if (command === 'finish_folder_export') { state.finished.push(String(args.exportId)); sessions.delete(String(args.exportId)); return null; }
+          if (command === 'finish_folder_export') { state.finished.push(String(args.exportId)); sessions.delete(String(args.exportId)); rejectWrite?.(new Error('目录导出已取消。')); rejectWrite = undefined; return null; }
           if (command === 'save_output') { state.saved.push(args); return `E:\\独立输出\\${String(args.name)}`; }
           if (command === 'open_output_directory') return null;
           throw new Error(`Unexpected native contract command: ${command}`);
         },
       },
     });
-  }, { processingFailure });
+  }, { processingFailure, cancelExport });
 }
 const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
 
@@ -87,6 +89,18 @@ test('folder workflow reviews multi-root tree, retains native collision names in
   const state = await page.evaluate(() => (window as unknown as { outputContract: { prepared: Array<Array<{ id: string; sourcePath: string }>>; writes: Array<{ id: string }>; finished: string[] } }).outputContract);
   expect(state.prepared.map(entries => entries.length)).toEqual([3, 1]); expect(state.prepared[1][0].sourcePath).toContain('S02');
   expect(state.writes.filter(write => write.id === state.prepared[0][0].id)).toHaveLength(1); expect(state.finished).toHaveLength(2);
+});
+
+test('cancelling an active directory IPC releases its session and retains successful outputs for retry', async ({ page }) => {
+  await nativeOutputContract(page, false, true); await page.goto('/#/batch'); await button(page, '处理流程').click();
+  await page.getByLabel('添加步骤类型', { exact: true }).selectOption('clean-spaces'); await button(page, '添加处理步骤').click(); await button(page, '添加文件夹').click(); await button(page, '开始处理').click();
+  await expect(page.locator('.task-row .success')).toHaveCount(3); await button(page, '选择输出目录并预览').click(); await button(page, '确认导出到目录').click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { exportWritePending?: boolean }).exportWritePending)).toBe(true);
+  await expect(button(page, '处理流程')).toBeDisabled(); await button(page, '取消导出').click(); await expect(page.locator('.folder-export-panel')).toContainText('已取消导出');
+  await expect(button(page, '处理流程')).toBeEnabled(); await expect(page.getByRole('region', { name: '输出文件树预览', exact: true })).toContainText('已写入');
+  await button(page, '重试未导出项：选择目录').click(); await button(page, '确认导出到目录').click(); await expect(page.locator('.folder-export-panel')).toContainText('3 成功、0 失败');
+  const state = await page.evaluate(() => (window as unknown as { outputContract: { prepared: unknown[][]; writes: Array<{ id: string }> } }).outputContract);
+  expect(state.prepared.map(entries => entries.length)).toEqual([3, 2]); expect(state.writes.filter(write => write.id === state.writes[0].id)).toHaveLength(1);
 });
 
 for (const mode of ['workflow', 'single']) {
