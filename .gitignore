@@ -7,3 +7,5 @@ src-tauri/gen/
 test-results/
 playwright-report/
 .env.local
+release-output/
+.release-work/

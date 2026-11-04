@@ -24,9 +24,9 @@
 | `npm run test:e2e` | PASS，25 Chromium tests |
 | `cargo test --locked --manifest-path src-tauri/Cargo.toml` | PASS，13 tests |
 | `cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | PASS |
-| 本轮 Windows 安装版复核 | 执行中；不沿用历史 PASS |
+| 本轮 Windows 安装版复核 | PASS，17 项，安装/启动/选择器/导出/预设重启/Store 中断恢复/卸载，原 Store 已恢复 |
 
-环境为本机 Windows 11 x64 / PowerShell。Windows 10、无 WebView2 干净系统和其他 DPI 不能由 Chromium 测试证明。
+环境为本机 Windows 11 Pro 25H2（26200.9711）x64 / 96 DPI、PowerShell、Node 24.16.0 / npm 12.0.1、Rust/Cargo 1.97.0 MSVC、WebView2 156.0.4314.58。原生复核发生于 2026-11-04 13:01 起，安装器 1,394,885 bytes，SHA-256 `2E547758EB149D1F1DE59BBF84B7CA1FDF2FC035C95B6369EF336EF494906EA5`。原始摘要当时位于忽略的 `src-tauri/target/qa-v011/run-114203a4/native-report.json`，精简结果在此保留，不依赖永久保留临时目录。安装器业务源码 `581aaae` 与合并基线 `f5c92e6` 之间仅文档变化。Windows 10、无 WebView2 干净系统和其他 DPI 不能由 Chromium 测试证明。
 
 ## 现有实现审计与保留边界
 
@@ -40,3 +40,13 @@
 ## 阶段风险和验收位置
 
 发布替换须先验证新产物、ZIP 清单和实际导入导出，再以可回滚方式发布。未知文件、链接跳转和外部 Cargo target 必须拒绝或跳过。Windows 右键菜单默认关闭，仅在具备安全启停和卸载证据时开放。功能、发布、清理和原生验收结果最终归入 [测试记录](TESTING.md) 与 [发布规则](RELEASE_POLICY.md)。
+
+## 发布工程验收过程（Gate 1）
+
+发布安全回归已扩展至 11 项，覆盖哈希/ZIP、固定目录替换、候选失败保护、候选重命名与回滚同时失败时保留唯一旧副本、未知手写文件、junction 越界、清理幂等、残留锁/活动锁和源码指纹。严格缓存清理的实际 dry-run 限于项目 `src-tauri/target/release`；将 `CARGO_TARGET_DIR` 指向项目外临时目录时，命令在删除前明确失败。此过程未清理编译缓存。
+
+最初三次完整流水线均通过自动回归和 Tauri 构建，但原生冒烟分别在导入或处理阶段失败，没有晋升半成品。诊断证实 Node 后台调用链下测试主窗可保持隐藏，Windows 也可能拒绝前台焦点请求。驱动改为显式显示本次创建的测试窗、校验窗口可见且未最小化，再通过 UIA Invoke 操作；没有放宽生产 IPC 或系统策略。相同 `Node spawn → pwsh → PowerShell STA`、`windowsHide=true`、`shell=false` 调用链连续 10/10 PASS，四步骤、源文件保护、正常退出、原 Store 恢复和临时目录清理均通过。2026-11-04 13:23 的精简汇总当时位于忽略的 `src-tauri/target/qa-v011/node-restored-10-summary.json`。
+
+修复后 `npm run release:win -- --allow-dirty` 与 `npm run release:verify` 均退出 0，11 发布安全测试 / 157 Vitest / 25 Chromium / 13 Rust、Clippy、lint/typecheck/build 和真实 Tauri NSIS 构建均 PASS；实际 ZIP 解压 EXE 的启动、导入、处理、导出、原文件保护、退出、Store 恢复与 QA 清理全部通过。Gate 1 放行时版本仍为 0.2.0、记录提交 `c016a99` 与 `dirty: true` 及源码指纹，属于开发验收，最终交付会从已提交的 0.3.0 源码重建。
+
+首次最新发布目录仅 5 个文件，共 6,726,046 bytes；staging/lock 清空，3 个旧 NSIS 安装器（审计前共 4,147,314 bytes）及本脚本失败摘要自动清理。Setup SHA-256 `2AD70557F539BB9E8A904BFA3E492842558BCC7548A3E32F7A448FA6A879095D`；ZIP SHA-256 `F5F3118F9152745B9C02378F809096EF6269F70702470865F41865D80B6DED34`。连续两次成功和一次真实故障保留验收在最终 0.3.0 已提交源码上执行。
