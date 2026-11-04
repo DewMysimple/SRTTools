@@ -1,10 +1,10 @@
 # Subtitle Tools
 
-Subtitle Tools 0.3.0 是极简、轻量的 Windows 本地字幕工具箱。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕处理在本机完成，不上传文件。
+Subtitle Tools 0.4.0 是极简、轻量的 Windows 本地字幕工具箱。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕处理在本机完成，不上传文件。
 
 操作流程：**选择文件 → 选择工具 → 设置参数 → 预览 → 确认导出**。默认生成 `原文件名_processed.ext`，不会覆盖原文件。
 
-![0.3.0 浏览器预览首页](docs/screenshots/home.png)
+![浏览器预览首页（0.3.0 界面参考）](docs/screenshots/home.png)
 
 ## 已实现
 
@@ -24,6 +24,15 @@ Subtitle Tools 0.3.0 是极简、轻量的 Windows 本地字幕工具箱。使�
 - 桌面文件夹导入、可选递归与格式过滤，扫描进度、去重、限额和取消恢复复用现有队列。
 - 独立字幕对比复用逻辑对齐视图和时间容差，保留不含正文的 JSON 报告；错误结构或未确认编码先给诊断。
 - 批量页应用和更新同一套工具预设；实验性的当前用户 Explorer 右键入口默认关闭，可在设置中显式登记、禁用和修复。
+- 批量“处理流程”模式可组合八种单文档操作，最多20步，一次解码/解析、末端编码；支持启停重排、逐步摘要、真实差异预览与失败项重试。
+- 我的流程支持命名保存、更新、重命名、复制和删除；工具/流程预设可选择导出 UTF-8 JSON，先预览导入影响再处理跳过/改名/覆盖冲突，旧工具预设保留。
+- 文件夹批量和流程可平铺或保持相对目录层级，目录与 ZIP 共用可见输出树；多根别名、重名避让、授权边界和源目录重叠拒绝。
+
+## 使用处理流程
+
+打开“批量处理 → 处理流程”，依次添加“删除空白字幕 → 空格清理 → 查找和替换 → 整体时间偏移”。填写查找/替换文字，将偏移量设为500毫秒；添加文件或文件夹后查看适用性，再点击“预览影响”。左右预览和逐步摘要来自真实执行，修改配置后需重新处理。核对结果后导出 ZIP，或在桌面版选择独立输出目录、预览文件树并确认写入。原文件保持不变，预览和保存流程都不等于导出字幕。
+
+“保存流程”只保存参数，不保存字幕和授权。工具预设可快照复制到某一步。跨设备分享使用“导出预设 JSON”，个人查找/替换文字会包含在配置中，导出前需明确确认。完整可导入示例见 [SRTTools-Presets.json](docs/examples/SRTTools-Presets.json)。ASS/SSA/VTT 混合步骤默认拒绝，需明确同意布局损失才规范化为 SRT；仅简繁的流程保留原布局。容量和安全边界见 [功能文档](docs/FEATURES.md)。
 
 ## 运行环境
 
@@ -55,6 +64,7 @@ npm run test:e2e
 npm run test:release
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+npm run benchmark
 ```
 
 覆盖核心边界、字节导入到导出、批次失败与取消、编码不确定时阻止导出、ZIP 重名、设置 / 历史重载，以及真实浏览器 Worker 流程。详细范围与手工验收见 [TESTING](docs/TESTING.md)。
@@ -72,6 +82,7 @@ npm run disk:report
 ```text
 release-output/
   SRTTools/subtitle-tools.exe
+  SRTTools/THIRD_PARTY_NOTICES.txt
   SRTTools.zip
   SRTTools-Setup.exe
   SHA256SUMS.txt
