@@ -26,7 +26,7 @@ $flatDestination = Join-Path $testRoot '平铺 输出 🐱'
 Prepare-WorkflowDirectory $flatDestination
 Click-Control '确认导出到目录'
 Wait-Condition { Find-Text '目录导出结束：4 成功、0 失败' } 'Native flat directory export did not complete all four files.' 60000 | Out-Null
-$flatNames = @('第一份_processed.srt','第二份_processed.srt','同名_processed.srt','同名_processed (1).srt')
+$flatNames = @('第一份_processed.srt','第二份_processed.srt','同名_processed.srt','同名_processed (2).srt')
 Assert-Condition (@(Get-ChildItem -LiteralPath $flatDestination -Directory).Count -eq 0 -and @(Get-ChildItem -LiteralPath $flatDestination -File).Count -eq 4) 'Flat export created subdirectories or lost an input.'
 foreach ($name in $flatNames) { Assert-Bytes (Join-Path $flatDestination $name) $expectedBytes }
 Feature-Pass 'Workflow_native_flat_directory_collision_and_exact_bytes'
