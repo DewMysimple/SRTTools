@@ -27,13 +27,13 @@ npm run disk:report
 
 正式交付从已提交的源码构建。开发验收可明确使用 `npm run release:win -- --allow-dirty`，构建清单会记录 `dirty: true`。源码指纹覆盖 Git 可见的源码、脚本、配置、锁文件及实际分发的 `docs/THIRD_PARTY_NOTICES.txt`，排除其它 docs、wiki_memory、prompt、README 和根 AGENTS。纯文档交接提交不会使相同源码的产物失效。
 
-构建依次执行 lint、类型检查、发布脚本安全测试、Vitest、前端构建、Windows Rust 测试和 Clippy、Chromium E2E，以及 Tauri NSIS 构建。测试输出放在本次受控暂存目录。
+构建依次执行 lint、类型检查、发布脚本安全测试、Vitest、前端构建、Windows Rust 测试和 Clippy、实际 Windows PowerShell 5.1 的10项QA安全与12项状态保护回归、Chromium E2E，以及 Tauri NSIS 构建。测试输出放在本次受控暂存目录。
 
 之后复制主程序、本地依赖 DLL 及明确配置的第三方许可文件，生成 ZIP，核对目录、ZIP 数据流和实际解压文件的完整清单、大小及 SHA-256。在解压得到的 EXE 上调用 Windows UI Automation 冒烟，完成真实选择字幕、处理、导出、原字节保护和应用退出。冒烟驱动临时使用的应用设置在结束时恢复。
 
 0.4.0及以后使用 `windows-smoke.ps1 -Scenario workflow`。清单必须记录并验证10个固定布尔项：四步流程、预览/执行字节一致、预设重启往返、原生预设JSON交换、坏JSON保旧Store、嵌套目录写入、多根ZIP清单、源/目标重叠拒绝、写入失败重试、处理取消重试；全部为true才允许晋升。基础EXE哈希、原字节、Store恢复、退出与清理仍必须通过。旧0.3清单按旧契约校验，允许它作为新候选失败时保留的最后成功版本，不伪补新验收字段。
 
-固定Setup可复用 `windows-setup-acceptance.ps1 -SetupPath <绝对路径> -ReportPath <项目target下报告> -ExpectedVersion 0.4.0 -SmokeScenario workflow` 验收。驱动在受控临时安装目录运行，持久备份真实用户Store与专属注册键，seed既有设置及两类合法预设，核对安装/完整子流程/卸载全过程逐字节保留，再恢复真实用户原值；它不清空用户数据以换取干净启动。开发包dirty验收不等于正式clean包，报告分别记录。
+固定Setup可复用 `windows-setup-acceptance.ps1 -SetupPath <绝对路径> -ReportPath <项目target下报告> -ExpectedVersion 0.4.0 -SmokeScenario workflow` 验收。驱动在受控临时安装目录运行，持久备份真实用户Store与专属注册键，seed既有设置及两类合法预设，核对安装/完整子流程/卸载全过程逐字节保留，再恢复真实用户原值；应用须真实读取并应用既有工具/流程预设，完成流程与重启后再读；它不清空用户数据以换取干净启动。Job/父子lease和持久owner记录确认写者全部停止后才恢复，注册表复原覆盖值及Owner/Group/DACL；PS5备份严格校验shape/depth/完整JSON往返，不声称SACL覆盖。开发包dirty验收不等于正式clean包，报告分别记录。
 
 当前资源白名单只接受 Tauri map `../docs/THIRD_PARTY_NOTICES.txt` → `THIRD_PARTY_NOTICES.txt`，并验证源文件在仓库内、非链接且非空。其它资源或 sidecar 新增到 Tauri 配置后，须先补齐经验证的打包清单。
 

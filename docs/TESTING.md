@@ -2,32 +2,37 @@
 
 v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [发布检查表](RELEASE_CHECKLIST_v0.1.1.md)。回归夹具位于 [examples/回归](../examples/回归)，包含 UTF-8 BOM、GBK CRLF、Unicode 文件名、重复编号和损坏时间行。Playwright 将本次运行的截图留在 `test-results/`。
 
-## v0.4.0 验证进行中（2026-11-04）
+## v0.4.0 正式验收（2026-11-04）
 
-基线在 `97500418df0ebc036a08987987f87798cb35c091` 实际重新运行，之后在 `codex/v0.4.0` 分阶段实现。当前产品版本为0.4.0；本节不是正式发布通过声明。最终源码、原生包、安装/卸载和远程main证据集中在[发布审阅](REVIEW_v0.4.0_RELEASE.md)。
+产品源码`28cadeeaf92654f1598dd4f7385811b28fa2a757`在干净main完整发布，dirty=false、sourceFingerprint=`B64CDECC0CD947B5CDE73A7E9486D923CFB8D0BD0FEE947CDD80CCCDFCB21C3C`；正式release:win 262.310s及release:verify均PASS。最终六文件、完整哈希、故障历史、安装/卸载、磁盘前后和主线交付见[发布审阅](REVIEW_v0.4.0_RELEASE.md)。
 
-| 检查 | 当前实际结果与范围 |
+| 检查 | 本轮实际结果与范围 |
 | --- | --- |
-| npm ci | v0.3基线与0.4清单各实际执行，均268 packages / 5s；依赖版本没有放宽 |
-| lint / typecheck / build | 开发源码通过；正式统一门槛待重新执行。Vite有主chunk超过500kB提示，未隐藏；流程编辑器按需加载 |
-| Vitest | 最新全量21 files / 306 tests通过，1.18s；包含旧解析/编码/简繁/diff/单项和新流程/存储/树规划 |
-| Rust / Clippy | 42/42通过，0.74s；Clippy all-targets -D warnings通过；含真实路径/junction/原地reparse阳性对照和写入中取消 |
-| 发布安全 | 15/15通过：0.4缺完整workflow证据不允许晋升，旧0.3 lastgood可保全，原有回滚/未知文件/链接/锁边界不变 |
-| Chromium | 开发阶段全63通过；后续流程/布局10项、目录5项分别通过。正式首轮为71/72，已定位并修复测试同步，最终72全量待重跑 |
-| 原生workflow开发ZIP | 10/10 true，9源文件hash不变、退出/Store恢复/cleanup true；直接和Node后台→PS5链路各通过，dirty=true不冒充正式包 |
-| 写入中取消 | 真实128MiB原生输出，在观察到0.7–1.4MiB已写后finish，20/20通过；无partial/tmp/guard，旧成功与源不变、句柄释放、fresh retry成功；不是UIA点击写入取消的同义证据 |
-| QA状态/安全 | PS5状态12/12（真实O/G/DACL恢复、深树拒绝等）、Job/path/lease安全10/10真实通过；仅自有GUID测试，不碰真实用户profile |
-| benchmark | `npm run benchmark`完成：Node22组+独立温缓存IO4组、真实生产Worker11组，各warmup+5runs；1017创建/终止、active0/max1，取消无假成功。详见[性能报告](PERFORMANCE_v0.4.0.md) |
-| 托管CI | [b85d5a0 的两项job实际success](https://github.com/DewMysimple/SRTTools/actions/runs/41816081583)；它早于本地发现的偶发测试等待问题及QA驱动修补，不替代新源码验证 |
-| 正式发布 / Setup / main | 待完成；旧0.3六文件与原manifest在首轮提前失败后完全不变 |
+| npm ci | 基线及0.4清单均实际执行：268 packages/5s |
+| lint/typecheck/build | 正式同源PASS；Vite主chunk511.43kB提示保留，流程编辑器lazy load |
+| Vitest | 21files/311tests PASS，1.11s（命令墙钟1.598s） |
+| Rust/Clippy | 42/42 PASS，0.67s；all-targets -D warnings PASS |
+| 发布安全 | 15/15 PASS，含0.4完整原生证据、旧0.3保护和既有事务/路径边界 |
+| Chromium | 全量72/72 PASS，1.6m；真实Worker、流程CRUD/预设/字节、900/1200浅深主题和目录合同 |
+| 正式ZIP原生 | workflow10/10、9源文件hash、Store恢复/退出/cleanup全true；真实解压EXE/import/process/export |
+| 固定Setup | 19/19检查及workflow10/10；实际安装/旧设置和工具+流程预设应用/重启/卸载/恢复通过，Registry覆盖值和O/G/DACL，不声称SACL |
+| 写入中取消 | 真实128MiB输出，在观察到0.7–1.4MiB已写后finish，20/20 PASS；无partial/tmp/guard、源与成功项不变、句柄释放/fresh retry成功。与browser mocked IPC取消合同分列，不冒称UIA写入中点击 |
+| PS5 QA安全/状态 | 10/10和12/12 PASS；actual5.1.26100.9711/Desktop，真实Job/路径/lease/Registry O/G/DACL/严格JSON；自有GUID夹具清理 |
+| benchmark | Node22组+温缓存IO4组、生产真实Worker11组，各warmup+5runs；1017创建/终止、active0/max1，取消无假成功。7255b02同引擎测量，非最终构建现场重测；[详细报告](PERFORMANCE_v0.4.0.md) |
+| 托管CI | [28cadee Actions](https://github.com/DewMysimple/SRTTools/actions/runs/41827759104)前端/Chromium和Windows Rust两job实际success |
+| 故障保全 | 5ffa85a实际before-publish预期exit1，完整构建/ZIP原生后旧0.3六hash及manifest原始字节完全不变，verify PASS；与28cadee成功分开署源 |
+
+环境为Win11 Pro25H2 26200.9711/x64/96DPI100%/WebView2 156.0.4314.58，i7-14700KF约32GiB，Node24.16/npm12.0.1/Rust1.97 MSVC。质量命令耗时与原生完整字段见发布审阅和build-info；CLI耗时包括启动，测试自身耗时单列。
 
 ### 真实失败与修复
 
-正式首轮在Chromium第53项CRUD用例提前失败（71通过/1失败），尚未进入Tauri和预定before-publish点。测试确认删除后仅检查一直存在的四张步骤卡，随即注入Quota失败，可能把尚未完成的删除也阻断，产品按设计保留错误对话框。修为等待对话框消失和保存列表真实删除，再注入下一次保存失败，另断言旧Store raw完全相同；专项20/20重复通过（1.2分钟）。这次旧产物保全不冒充已经跑到计划故障点。
+b85d5a0首轮71/72因CRUD测试对异步删除等待不足，尚未到Tauri/预定故障点；显式等对话框/保存列表后再注入Quota失败，旧raw严格不变，专项20/20重复通过。6c2d806首轮QA9/10因直接PS5缺Get-FileHash提前失败，改.NET SHA256并固定pwsh转PS5链路，后续全部通过。这两次保全不冒称已到故障点。
 
-独立审阅还实证修复了纯Chinese ASS跨控制标记词组边界、处理重试丢平铺/已写ID/避让路径、隔离预设复活、原地reparse防护，以及安装QA超时/lease/清理根/深备份恢复风险。注册表JSON在PS5即使WarningAction Stop也可能静默截断，必须用严格递归shape/depth和完整roundtrip验证；测试记录区分真实FS/registry/进程和browser mock IPC，不混用。
+5ffa85a完整预定故障通过后，随后启动的成功发布尝试在Tauri编译被主动停止：独立探针发现未来createdAt的预设覆盖后updatedAt回退导致不可读。28cadee采用max(now,createdAt,updatedAt)，新增五个回归（含9999年边界），最终311全通过。日志保留失败/暂停，不改写PASS。
 
-新Windows10、125%/150%/200%DPI、无WebView2干净系统、超MAX_PATH系统选择器仍NOT_RUN；Explorer真实菜单显示/点击仍BLOCKED，保持默认关闭实验性。没有用旧测试数字或注册成功替代这些环境验收。
+其余已修复：ASS跨控制标记词组边界、处理重试丢模式/已写ID/真实避让路径、隔离预设复活、原地reparse防护及QA Job/lease/持久恢复。纯Chinese六格式独立bytes/ID对照一致；浏览器合同、真实文件系统和原生UIA证据分开列。
+
+Explorer实际菜单显示/点击仍BLOCKED（实验性默认关闭）；Win10、125%/150%/200% DPI、无WebView2干净系统、超MAX_PATH系统选择器NOT_RUN，原因是没有对应可交互环境；安装包未签名；独立Worker OS峰值NOT_MEASURED。历史Firefox及旧原生数字仅代表当时版本。
 
 ## v0.3.0 历史验收（2026-11-04）
 

@@ -77,6 +77,8 @@ npm run release:verify
 npm run disk:report
 ```
 
+v0.4.0 已完成干净源码发布、ZIP 解压原生流程及固定 Setup 安装/卸载验收；完整哈希、环境与未覆盖项见[本轮发布审阅](docs/REVIEW_v0.4.0_RELEASE.md)。
+
 最终文件统一放在项目的 `release-output/`：
 
 ```text
