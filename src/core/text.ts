@@ -68,15 +68,18 @@ export function wrapText(text: string, maxChars: number): string {
   return text.replace(/\r\n?/g, '\n').split('\n').map(line => {
     const chars = Array.from(line);
     const output: string[] = [];
-    while (chars.length > maxChars) {
+    let offset = 0;
+    while (chars.length - offset > maxChars) {
       // Prefer a nearby space without making lines exceed the requested bound.
-      let boundary = maxChars;
-      for (let i = maxChars - 1; i >= Math.floor(maxChars / 2); i--) {
+      let boundary = offset + maxChars;
+      for (let i = boundary - 1; i >= offset + Math.floor(maxChars / 2); i--) {
         if (/\s/.test(chars[i])) { boundary = i + 1; break; }
       }
-      output.push(chars.splice(0, boundary).join(''));
+      // Keep a cursor instead of shifting the remaining array for every output line.
+      output.push(chars.slice(offset, boundary).join(''));
+      offset = boundary;
     }
-    output.push(chars.join(''));
+    output.push(chars.slice(offset).join(''));
     return output.join('\n');
   }).join('\n');
 }

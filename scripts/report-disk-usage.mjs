@@ -6,6 +6,7 @@ if (process.argv.length > 2) throw new Error('disk:report takes no path argument
 const report = [];
 for (const name of [
   'release-output', 'dist', 'src-tauri/target/release', 'src-tauri/target/debug',
+  'src-tauri/target/benchmark',
   'test-results', 'playwright-report', '.release-work',
 ]) {
   const directory = path.join(PROJECT_ROOT, name);

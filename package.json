@@ -1,7 +1,7 @@
 {
   "name": "subtitle-tools",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -18,7 +18,11 @@
     "clean:outputs": "node scripts/clean-outputs.mjs",
     "clean:release-cache": "node scripts/clean-outputs.mjs --release-cache",
     "disk:report": "node scripts/report-disk-usage.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "benchmark": "node --expose-gc scripts/benchmark.mjs --phase=current && node scripts/benchmark-browser.mjs && node scripts/benchmark-report.mjs",
+    "benchmark:engine": "node --expose-gc scripts/benchmark.mjs --phase=current",
+    "benchmark:browser": "node scripts/benchmark-browser.mjs",
+    "benchmark:report": "node scripts/benchmark-report.mjs"
   },
   "dependencies": {
     "@kayahr/text-encoding": "2.2.0",

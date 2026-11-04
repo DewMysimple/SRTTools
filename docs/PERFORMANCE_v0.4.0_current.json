@@ -1,0 +1,3365 @@
+{
+  "schemaVersion": 1,
+  "phase": "current",
+  "measuredAt": "2026-11-04T10:17:57.106Z",
+  "sourceSha": "c3e4d78f5cd5a8c6e0489f3119a0bfe872d6ad5b",
+  "appVersion": "0.4.0",
+  "runtimeBundleSha256": "F28B0C0892D069D66D8B1E37CE348367DA046580C1BA8CBBCF0A69F13920587E",
+  "sourceCoreModified": true,
+  "environment": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "version": "Windows 11 Pro",
+    "architecture": "x64",
+    "cpu": "Intel(R) Core(TM) i7-14700KF",
+    "logicalCpus": 28,
+    "totalMemoryBytes": 34138726400,
+    "node": "v24.16.0",
+    "rust": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+    "buildMode": "Vite SSR bundle, unminified, Node runtime",
+    "gcExposed": true
+  },
+  "method": {
+    "fixture": "Deterministic generated SRT with simplified/traditional Chinese, emoji, HTML tags, spaces and multiline bodies; every 23rd cue is whitespace-only.",
+    "single": [
+      "clean-spaces"
+    ],
+    "serialThree": [
+      "remove-empty",
+      "clean-spaces",
+      "shift(+500ms,reject)"
+    ],
+    "workflowThree": "Same operation semantics, one decode/parse and one final serialize/encode.",
+    "complexCases": "UTF-16LE, strict GB18030 and source-preserving Chinese ASS; source-Chinese stage breakdown is NOT_MEASURED (total measured).",
+    "timing": "Each tool decodes, parses, transforms, serializes (including existing final-output parse verification), and encodes. Stage-boundary memory sampling is included; output hashing is excluded.",
+    "inputReads": "Engine cases use in-memory bytes. ioMeasurements separately samples warm-cache Node filesystem reads and temp-write+fsync+rename inside the controlled benchmark directory; this is not a measurement of Rust IPC, filesystem permission dialogs or cold storage.",
+    "workerLifecycle": "Node pure-engine sequential baseline; actual browser Worker startup/cancellation NOT_MEASURED in this report.",
+    "memory": "Stage-boundary heap/RSS samples, not a reliable true peak; GC runs before each sample when --expose-gc is used.",
+    "retainedFixtureDiskBytes": 0,
+    "temporaryBundle": "src-tauri/target/benchmark/run-<uuid>, generated IO fixtures and bundles deleted after completion"
+  },
+  "results": [
+    {
+      "id": "single-100",
+      "cueCount": 100,
+      "fileCount": 1,
+      "mode": "single",
+      "inputBytesPerFile": 12809,
+      "inputBytes": 12809,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 0.675200000000018,
+        "min": 0.6169000000000437,
+        "max": 0.8729999999999905
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.030799999999999272,
+          "min": 0.029799999999966076,
+          "max": 0.038000000000010914
+        },
+        "parse": {
+          "median": 0.20409999999998263,
+          "min": 0.19449999999994816,
+          "max": 0.25799999999998136
+        },
+        "transform": {
+          "median": 0.09969999999998436,
+          "min": 0.092899999999986,
+          "max": 0.10919999999998709
+        },
+        "serialize": {
+          "median": 0.27890000000002146,
+          "min": 0.23239999999998417,
+          "max": 0.41159999999996444
+        },
+        "encode": {
+          "median": 0.0373000000000161,
+          "min": 0.03459999999995489,
+          "max": 0.04399999999998272
+        }
+      },
+      "outputBytes": 12129,
+      "outputSha256": "abc6eeb6a825ae7f55f6f6f3fe84424b32929ad039a0c0816a28e22ea98ebc0b",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 18295648,
+          "min": 18253808,
+          "max": 18311376
+        },
+        "sampledHeapMaxBytes": 19699120,
+        "heapAfterBytes": {
+          "median": 19225328,
+          "min": 19206536,
+          "max": 19253240
+        },
+        "rssAfterBytes": {
+          "median": 155070464,
+          "min": 154927104,
+          "max": 155303936
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 0.7992999999999597,
+          "stagesMs": {
+            "decode": 0.030799999999999272,
+            "parse": 0.254099999999994,
+            "transform": 0.09489999999999554,
+            "serialize": 0.34279999999995425,
+            "encode": 0.04310000000003811
+          },
+          "outputBytes": 12129,
+          "outputSha256": "abc6eeb6a825ae7f55f6f6f3fe84424b32929ad039a0c0816a28e22ea98ebc0b",
+          "heapBefore": 18253808,
+          "sampledHeapMax": 19206040,
+          "heapAfter": 19206536,
+          "rssAfter": 155070464
+        },
+        {
+          "totalMs": 0.8729999999999905,
+          "stagesMs": {
+            "decode": 0.038000000000010914,
+            "parse": 0.25799999999998136,
+            "transform": 0.09969999999998436,
+            "serialize": 0.41159999999996444,
+            "encode": 0.04399999999998272
+          },
+          "outputBytes": 12129,
+          "outputSha256": "abc6eeb6a825ae7f55f6f6f3fe84424b32929ad039a0c0816a28e22ea98ebc0b",
+          "heapBefore": 18270848,
+          "sampledHeapMax": 19699120,
+          "heapAfter": 19225328,
+          "rssAfter": 154927104
+        },
+        {
+          "totalMs": 0.6169000000000437,
+          "stagesMs": {
+            "decode": 0.036000000000001364,
+            "parse": 0.20409999999998263,
+            "transform": 0.092899999999986,
+            "serialize": 0.23239999999998417,
+            "encode": 0.03459999999995489
+          },
+          "outputBytes": 12129,
+          "outputSha256": "abc6eeb6a825ae7f55f6f6f3fe84424b32929ad039a0c0816a28e22ea98ebc0b",
+          "heapBefore": 18295648,
+          "sampledHeapMax": 19222056,
+          "heapAfter": 19222552,
+          "rssAfter": 154992640
+        },
+        {
+          "totalMs": 0.6490000000000009,
+          "stagesMs": {
+            "decode": 0.030599999999992633,
+            "parse": 0.19739999999995916,
+            "transform": 0.10599999999999454,
+            "serialize": 0.2533000000000243,
+            "encode": 0.03700000000003456
+          },
+          "outputBytes": 12129,
+          "outputSha256": "abc6eeb6a825ae7f55f6f6f3fe84424b32929ad039a0c0816a28e22ea98ebc0b",
+          "heapBefore": 18297096,
+          "sampledHeapMax": 19235872,
+          "heapAfter": 19237392,
+          "rssAfter": 155099136
+        },
+        {
+          "totalMs": 0.675200000000018,
+          "stagesMs": {
+            "decode": 0.029799999999966076,
+            "parse": 0.19449999999994816,
+            "transform": 0.10919999999998709,
+            "serialize": 0.27890000000002146,
+            "encode": 0.0373000000000161
+          },
+          "outputBytes": 12129,
+          "outputSha256": "abc6eeb6a825ae7f55f6f6f3fe84424b32929ad039a0c0816a28e22ea98ebc0b",
+          "heapBefore": 18311376,
+          "sampledHeapMax": 19247728,
+          "heapAfter": 19253240,
+          "rssAfter": 155303936
+        }
+      ]
+    },
+    {
+      "id": "serial-three-100",
+      "cueCount": 100,
+      "fileCount": 1,
+      "mode": "serial-three",
+      "inputBytesPerFile": 12809,
+      "inputBytes": 12809,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 1.283299999999997,
+        "min": 1.2327999999999975,
+        "max": 1.4122000000000412
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.07929999999998927,
+          "min": 0.0766999999999598,
+          "max": 0.08499999999997954
+        },
+        "parse": {
+          "median": 0.37210000000004584,
+          "min": 0.3631000000000313,
+          "max": 0.3865999999999872
+        },
+        "transform": {
+          "median": 0.16620000000000346,
+          "min": 0.14780000000001792,
+          "max": 0.18659999999999854
+        },
+        "serialize": {
+          "median": 0.5176999999999907,
+          "min": 0.5136000000000536,
+          "max": 0.649599999999964
+        },
+        "encode": {
+          "median": 0.10339999999990823,
+          "min": 0.09659999999996671,
+          "max": 0.16789999999997463
+        }
+      },
+      "outputBytes": 11953,
+      "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 18459144,
+          "min": 18452152,
+          "max": 18768648
+        },
+        "sampledHeapMaxBytes": 20995552,
+        "heapAfterBytes": {
+          "median": 20826656,
+          "min": 20819328,
+          "max": 21279304
+        },
+        "rssAfterBytes": {
+          "median": 155791360,
+          "min": 155652096,
+          "max": 156065792
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 1.4122000000000412,
+          "stagesMs": {
+            "decode": 0.07839999999993097,
+            "parse": 0.3865999999999872,
+            "transform": 0.17070000000001073,
+            "serialize": 0.649599999999964,
+            "encode": 0.10339999999990823
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 18522768,
+          "sampledHeapMax": 20995552,
+          "heapAfter": 21279304,
+          "rssAfter": 155951104
+        },
+        {
+          "totalMs": 1.2937000000000012,
+          "stagesMs": {
+            "decode": 0.0766999999999598,
+            "parse": 0.3631000000000313,
+            "transform": 0.14840000000003783,
+            "serialize": 0.5136000000000536,
+            "encode": 0.16789999999997463
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 18768648,
+          "sampledHeapMax": 20820008,
+          "heapAfter": 20821136,
+          "rssAfter": 155652096
+        },
+        {
+          "totalMs": 1.2327999999999975,
+          "stagesMs": {
+            "decode": 0.07929999999998927,
+            "parse": 0.37210000000004584,
+            "transform": 0.14780000000001792,
+            "serialize": 0.5177000000000476,
+            "encode": 0.09659999999996671
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 18452152,
+          "sampledHeapMax": 20818832,
+          "heapAfter": 20819328,
+          "rssAfter": 155717632
+        },
+        {
+          "totalMs": 1.2557000000000471,
+          "stagesMs": {
+            "decode": 0.08499999999997954,
+            "parse": 0.3731000000000222,
+            "transform": 0.16620000000000346,
+            "serialize": 0.5161999999999694,
+            "encode": 0.09770000000003165
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 18452200,
+          "sampledHeapMax": 20826160,
+          "heapAfter": 20826656,
+          "rssAfter": 155791360
+        },
+        {
+          "totalMs": 1.283299999999997,
+          "stagesMs": {
+            "decode": 0.0846000000000231,
+            "parse": 0.3715000000000259,
+            "transform": 0.18659999999999854,
+            "serialize": 0.5176999999999907,
+            "encode": 0.10430000000002337
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 18459144,
+          "sampledHeapMax": 20836456,
+          "heapAfter": 20836952,
+          "rssAfter": 156065792
+        }
+      ]
+    },
+    {
+      "id": "single-1000",
+      "cueCount": 1000,
+      "fileCount": 1,
+      "mode": "single",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 130567,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 4.413799999999981,
+        "min": 4.083900000000028,
+        "max": 4.802099999999996
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.20330000000001291,
+          "min": 0.19489999999996144,
+          "max": 0.22989999999998645
+        },
+        "parse": {
+          "median": 1.132600000000025,
+          "min": 0.9970000000000141,
+          "max": 1.3061999999999898
+        },
+        "transform": {
+          "median": 0.7704000000000519,
+          "min": 0.7343999999999937,
+          "max": 0.890199999999993
+        },
+        "serialize": {
+          "median": 1.9590000000000032,
+          "min": 1.7467999999999506,
+          "max": 2.252999999999986
+        },
+        "encode": {
+          "median": 0.32789999999999964,
+          "min": 0.3143000000000029,
+          "max": 0.333500000000015
+        }
+      },
+      "outputBytes": 123743,
+      "outputSha256": "3846678634c6f3442437d14f330363afc0d35f90b0373838e3b39b91434caba9",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 18473664,
+          "min": 18469800,
+          "max": 18498296
+        },
+        "sampledHeapMaxBytes": 27534824,
+        "heapAfterBytes": {
+          "median": 27477480,
+          "min": 27444904,
+          "max": 27535320
+        },
+        "rssAfterBytes": {
+          "median": 167567360,
+          "min": 167182336,
+          "max": 169332736
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 4.802099999999996,
+          "stagesMs": {
+            "decode": 0.19489999999996144,
+            "parse": 1.132600000000025,
+            "transform": 0.890199999999993,
+            "serialize": 2.252999999999986,
+            "encode": 0.3143000000000029
+          },
+          "outputBytes": 123743,
+          "outputSha256": "3846678634c6f3442437d14f330363afc0d35f90b0373838e3b39b91434caba9",
+          "heapBefore": 18469800,
+          "sampledHeapMax": 27476984,
+          "heapAfter": 27477480,
+          "rssAfter": 167251968
+        },
+        {
+          "totalMs": 4.413799999999981,
+          "stagesMs": {
+            "decode": 0.2074000000000069,
+            "parse": 1.140199999999993,
+            "transform": 0.7556000000000154,
+            "serialize": 1.9590000000000032,
+            "encode": 0.333500000000015
+          },
+          "outputBytes": 123743,
+          "outputSha256": "3846678634c6f3442437d14f330363afc0d35f90b0373838e3b39b91434caba9",
+          "heapBefore": 18470184,
+          "sampledHeapMax": 27481128,
+          "heapAfter": 27481624,
+          "rssAfter": 169332736
+        },
+        {
+          "totalMs": 4.634500000000003,
+          "stagesMs": {
+            "decode": 0.22989999999998645,
+            "parse": 1.3061999999999898,
+            "transform": 0.7882999999999925,
+            "serialize": 1.9642000000000053,
+            "encode": 0.32679999999999154
+          },
+          "outputBytes": 123743,
+          "outputSha256": "3846678634c6f3442437d14f330363afc0d35f90b0373838e3b39b91434caba9",
+          "heapBefore": 18473664,
+          "sampledHeapMax": 27534824,
+          "heapAfter": 27535320,
+          "rssAfter": 167641088
+        },
+        {
+          "totalMs": 4.182499999999948,
+          "stagesMs": {
+            "decode": 0.20330000000001291,
+            "parse": 1.117399999999975,
+            "transform": 0.7704000000000519,
+            "serialize": 1.7467999999999506,
+            "encode": 0.32789999999999964
+          },
+          "outputBytes": 123743,
+          "outputSha256": "3846678634c6f3442437d14f330363afc0d35f90b0373838e3b39b91434caba9",
+          "heapBefore": 18486976,
+          "sampledHeapMax": 27447736,
+          "heapAfter": 27448232,
+          "rssAfter": 167182336
+        },
+        {
+          "totalMs": 4.083900000000028,
+          "stagesMs": {
+            "decode": 0.2027999999999679,
+            "parse": 0.9970000000000141,
+            "transform": 0.7343999999999937,
+            "serialize": 1.8009000000000128,
+            "encode": 0.33089999999998554
+          },
+          "outputBytes": 123743,
+          "outputSha256": "3846678634c6f3442437d14f330363afc0d35f90b0373838e3b39b91434caba9",
+          "heapBefore": 18498296,
+          "sampledHeapMax": 27444408,
+          "heapAfter": 27444904,
+          "rssAfter": 167567360
+        }
+      ]
+    },
+    {
+      "id": "serial-three-1000",
+      "cueCount": 1000,
+      "fileCount": 1,
+      "mode": "serial-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 130567,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 11.557600000000036,
+        "min": 11.115600000000029,
+        "max": 11.928100000000029
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.4584000000000401,
+          "min": 0.44880000000000564,
+          "max": 0.5098999999999592
+        },
+        "parse": {
+          "median": 3.405200000000036,
+          "min": 3.3435000000000628,
+          "max": 3.580600000000004
+        },
+        "transform": {
+          "median": 1.4055999999999926,
+          "min": 1.2916999999999916,
+          "max": 1.5165999999999826
+        },
+        "serialize": {
+          "median": 5.178700000000049,
+          "min": 4.987799999999936,
+          "max": 5.403599999999983
+        },
+        "encode": {
+          "median": 0.9536999999999694,
+          "min": 0.9372000000000185,
+          "max": 1.0515999999999508
+        }
+      },
+      "outputBytes": 122158,
+      "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 18520992,
+          "min": 18511696,
+          "max": 18525016
+        },
+        "sampledHeapMaxBytes": 35382592,
+        "heapAfterBytes": {
+          "median": 25462712,
+          "min": 25426792,
+          "max": 34310112
+        },
+        "rssAfterBytes": {
+          "median": 182620160,
+          "min": 175190016,
+          "max": 182738944
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 11.620600000000024,
+          "stagesMs": {
+            "decode": 0.5098999999999592,
+            "parse": 3.580600000000004,
+            "transform": 1.2916999999999916,
+            "serialize": 5.2697,
+            "encode": 0.9372000000000185
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 18511696,
+          "sampledHeapMax": 34309616,
+          "heapAfter": 34310112,
+          "rssAfter": 175190016
+        },
+        {
+          "totalMs": 11.928100000000029,
+          "stagesMs": {
+            "decode": 0.4584000000000401,
+            "parse": 3.562000000000012,
+            "transform": 1.4175999999999362,
+            "serialize": 5.403599999999983,
+            "encode": 1.0515999999999508
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 18520312,
+          "sampledHeapMax": 35251160,
+          "heapAfter": 25462712,
+          "rssAfter": 182706176
+        },
+        {
+          "totalMs": 11.557600000000036,
+          "stagesMs": {
+            "decode": 0.44880000000000564,
+            "parse": 3.405200000000036,
+            "transform": 1.5165999999999826,
+            "serialize": 5.178700000000049,
+            "encode": 0.9536999999999694
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 18520992,
+          "sampledHeapMax": 35259536,
+          "heapAfter": 25426792,
+          "rssAfter": 182738944
+        },
+        {
+          "totalMs": 11.352700000000027,
+          "stagesMs": {
+            "decode": 0.4712999999999852,
+            "parse": 3.3435000000000628,
+            "transform": 1.4055999999999926,
+            "serialize": 5.127999999999986,
+            "encode": 0.9581000000000586
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 18521560,
+          "sampledHeapMax": 35382592,
+          "heapAfter": 25440728,
+          "rssAfter": 182562816
+        },
+        {
+          "totalMs": 11.115600000000029,
+          "stagesMs": {
+            "decode": 0.4519999999999982,
+            "parse": 3.376199999999926,
+            "transform": 1.3257000000000403,
+            "serialize": 4.987799999999936,
+            "encode": 0.9372999999999934
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 18525016,
+          "sampledHeapMax": 35259936,
+          "heapAfter": 25488832,
+          "rssAfter": 182620160
+        }
+      ]
+    },
+    {
+      "id": "single-10000",
+      "cueCount": 10000,
+      "fileCount": 1,
+      "mode": "single",
+      "inputBytesPerFile": 1325642,
+      "inputBytes": 1325642,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 41.305999999999926,
+        "min": 40.24919999999997,
+        "max": 44.5222
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 1.1260999999999513,
+          "min": 1.105099999999993,
+          "max": 1.2823000000000775
+        },
+        "parse": {
+          "median": 9.884400000000028,
+          "min": 9.830100000000016,
+          "max": 10.134700000000066
+        },
+        "transform": {
+          "median": 7.3974000000000615,
+          "min": 7.364800000000059,
+          "max": 8.647600000000011
+        },
+        "serialize": {
+          "median": 19.916200000000003,
+          "min": 18.766399999999976,
+          "max": 22.388499999999908
+        },
+        "encode": {
+          "median": 2.7870000000000346,
+          "min": 2.779800000000023,
+          "max": 2.815400000000068
+        }
+      },
+      "outputBytes": 1257382,
+      "outputSha256": "0e35e2154d8ee7f14b25b2a3859d81dff104283466c9ab6f958c90ebd038f000",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 18534904,
+          "min": 18531824,
+          "max": 18536440
+        },
+        "sampledHeapMaxBytes": 62298016,
+        "heapAfterBytes": {
+          "median": 50758656,
+          "min": 50753264,
+          "max": 56767216
+        },
+        "rssAfterBytes": {
+          "median": 274415616,
+          "min": 240988160,
+          "max": 274423808
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 42.802099999999996,
+          "stagesMs": {
+            "decode": 1.1520999999999049,
+            "parse": 9.880600000000072,
+            "transform": 8.647600000000011,
+            "serialize": 20.306899999999928,
+            "encode": 2.779800000000023
+          },
+          "outputBytes": 1257382,
+          "outputSha256": "0e35e2154d8ee7f14b25b2a3859d81dff104283466c9ab6f958c90ebd038f000",
+          "heapBefore": 18531824,
+          "sampledHeapMax": 56766720,
+          "heapAfter": 56767216,
+          "rssAfter": 240988160
+        },
+        {
+          "totalMs": 44.5222,
+          "stagesMs": {
+            "decode": 1.105099999999993,
+            "parse": 9.830100000000016,
+            "transform": 8.382200000000012,
+            "serialize": 22.388499999999908,
+            "encode": 2.7812000000000126
+          },
+          "outputBytes": 1257382,
+          "outputSha256": "0e35e2154d8ee7f14b25b2a3859d81dff104283466c9ab6f958c90ebd038f000",
+          "heapBefore": 18534528,
+          "sampledHeapMax": 62293448,
+          "heapAfter": 50758656,
+          "rssAfter": 274300928
+        },
+        {
+          "totalMs": 41.305999999999926,
+          "stagesMs": {
+            "decode": 1.2823000000000775,
+            "parse": 9.884400000000028,
+            "transform": 7.364800000000059,
+            "serialize": 19.916200000000003,
+            "encode": 2.81129999999996
+          },
+          "outputBytes": 1257382,
+          "outputSha256": "0e35e2154d8ee7f14b25b2a3859d81dff104283466c9ab6f958c90ebd038f000",
+          "heapBefore": 18534904,
+          "sampledHeapMax": 62296560,
+          "heapAfter": 50873680,
+          "rssAfter": 274415616
+        },
+        {
+          "totalMs": 41.121599999999944,
+          "stagesMs": {
+            "decode": 1.1164999999999736,
+            "parse": 9.97199999999998,
+            "transform": 7.3840000000000146,
+            "serialize": 19.795100000000048,
+            "encode": 2.815400000000068
+          },
+          "outputBytes": 1257382,
+          "outputSha256": "0e35e2154d8ee7f14b25b2a3859d81dff104283466c9ab6f958c90ebd038f000",
+          "heapBefore": 18536064,
+          "sampledHeapMax": 62297640,
+          "heapAfter": 50753264,
+          "rssAfter": 274415616
+        },
+        {
+          "totalMs": 40.24919999999997,
+          "stagesMs": {
+            "decode": 1.1260999999999513,
+            "parse": 10.134700000000066,
+            "transform": 7.3974000000000615,
+            "serialize": 18.766399999999976,
+            "encode": 2.7870000000000346
+          },
+          "outputBytes": 1257382,
+          "outputSha256": "0e35e2154d8ee7f14b25b2a3859d81dff104283466c9ab6f958c90ebd038f000",
+          "heapBefore": 18536440,
+          "sampledHeapMax": 62298016,
+          "heapAfter": 50756008,
+          "rssAfter": 274423808
+        }
+      ]
+    },
+    {
+      "id": "serial-three-10000",
+      "cueCount": 10000,
+      "fileCount": 1,
+      "mode": "serial-three",
+      "inputBytesPerFile": 1325642,
+      "inputBytes": 1325642,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 108.74260000000004,
+        "min": 108.55829999999992,
+        "max": 109.6277
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 3.305499999999938,
+          "min": 3.2206000000003314,
+          "max": 3.444300000000112
+        },
+        "parse": {
+          "median": 28.784599999999955,
+          "min": 28.694299999999657,
+          "max": 29.137400000000298
+        },
+        "transform": {
+          "median": 12.346499999999878,
+          "min": 12.15459999999996,
+          "max": 12.542900000000145
+        },
+        "serialize": {
+          "median": 55.07320000000004,
+          "min": 54.54690000000005,
+          "max": 55.79249999999979
+        },
+        "encode": {
+          "median": 9.273400000000038,
+          "min": 9.221699999999828,
+          "max": 9.390300000000025
+        }
+      },
+      "outputBytes": 1241286,
+      "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 18535152,
+          "min": 18534184,
+          "max": 18539048
+        },
+        "sampledHeapMaxBytes": 94958352,
+        "heapAfterBytes": {
+          "median": 82709008,
+          "min": 82704416,
+          "max": 87465552
+        },
+        "rssAfterBytes": {
+          "median": 328298496,
+          "min": 328056832,
+          "max": 330338304
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 108.6563000000001,
+          "stagesMs": {
+            "decode": 3.263900000000035,
+            "parse": 28.8359999999999,
+            "transform": 12.15459999999996,
+            "serialize": 55.07320000000004,
+            "encode": 9.221699999999828
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 18538480,
+          "sampledHeapMax": 94958352,
+          "heapAfter": 87465552,
+          "rssAfter": 330338304
+        },
+        {
+          "totalMs": 108.55829999999992,
+          "stagesMs": {
+            "decode": 3.305499999999938,
+            "parse": 28.734299999999962,
+            "transform": 12.542900000000145,
+            "serialize": 54.54690000000005,
+            "encode": 9.316699999999855
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 18539048,
+          "sampledHeapMax": 94953728,
+          "heapAfter": 87286168,
+          "rssAfter": 330084352
+        },
+        {
+          "totalMs": 108.74260000000004,
+          "stagesMs": {
+            "decode": 3.2206000000003314,
+            "parse": 28.784599999999955,
+            "transform": 12.384799999999814,
+            "serialize": 54.85110000000009,
+            "encode": 9.390300000000025
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 18534184,
+          "sampledHeapMax": 94689616,
+          "heapAfter": 82704416,
+          "rssAfter": 328097792
+        },
+        {
+          "totalMs": 109.33479999999986,
+          "stagesMs": {
+            "decode": 3.384300000000394,
+            "parse": 29.137400000000298,
+            "transform": 12.241500000000087,
+            "serialize": 55.19270000000006,
+            "encode": 9.273400000000038
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 18534704,
+          "sampledHeapMax": 94690008,
+          "heapAfter": 82704720,
+          "rssAfter": 328056832
+        },
+        {
+          "totalMs": 109.6277,
+          "stagesMs": {
+            "decode": 3.444300000000112,
+            "parse": 28.694299999999657,
+            "transform": 12.346499999999878,
+            "serialize": 55.79249999999979,
+            "encode": 9.242600000000039
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 18535152,
+          "sampledHeapMax": 94694488,
+          "heapAfter": 82709008,
+          "rssAfter": 328298496
+        }
+      ]
+    },
+    {
+      "id": "single-50000",
+      "cueCount": 50000,
+      "fileCount": 1,
+      "mode": "single",
+      "inputBytesPerFile": 6715220,
+      "inputBytes": 6715220,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 256.71699999999964,
+        "min": 249.69140000000016,
+        "max": 259.5886999999998
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 6.083399999999983,
+          "min": 5.9715000000001055,
+          "max": 6.847899999999754
+        },
+        "parse": {
+          "median": 64.2479000000003,
+          "min": 63.58190000000013,
+          "max": 65.23720000000003
+        },
+        "transform": {
+          "median": 37.08169999999973,
+          "min": 36.53850000000011,
+          "max": 38.41439999999966
+        },
+        "serialize": {
+          "median": 134.97610000000032,
+          "min": 127.51950000000011,
+          "max": 136.1604000000002
+        },
+        "encode": {
+          "median": 14.335000000000036,
+          "min": 14.058399999999892,
+          "max": 14.51279999999997
+        }
+      },
+      "outputBytes": 6373916,
+      "outputSha256": "6a455d3bb44ffd56993db774778672dc5abcf305389e93796d3079b13012b2b9",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 18548416,
+          "min": 17000312,
+          "max": 18549168
+        },
+        "sampledHeapMaxBytes": 128010440,
+        "heapAfterBytes": {
+          "median": 122424696,
+          "min": 120850448,
+          "max": 122682872
+        },
+        "rssAfterBytes": {
+          "median": 430714880,
+          "min": 429867008,
+          "max": 431181824
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 249.69140000000016,
+          "stagesMs": {
+            "decode": 5.992099999999937,
+            "parse": 65.23720000000003,
+            "transform": 36.53850000000011,
+            "serialize": 127.51950000000011,
+            "encode": 14.344100000000026
+          },
+          "outputBytes": 6373916,
+          "outputSha256": "6a455d3bb44ffd56993db774778672dc5abcf305389e93796d3079b13012b2b9",
+          "heapBefore": 18547968,
+          "sampledHeapMax": 128010440,
+          "heapAfter": 122424696,
+          "rssAfter": 429867008
+        },
+        {
+          "totalMs": 257.02690000000007,
+          "stagesMs": {
+            "decode": 5.9715000000001055,
+            "parse": 63.58190000000013,
+            "transform": 37.08169999999973,
+            "serialize": 136.06039999999985,
+            "encode": 14.272699999999986
+          },
+          "outputBytes": 6373916,
+          "outputSha256": "6a455d3bb44ffd56993db774778672dc5abcf305389e93796d3079b13012b2b9",
+          "heapBefore": 18548416,
+          "sampledHeapMax": 127842752,
+          "heapAfter": 122658520,
+          "rssAfter": 430546944
+        },
+        {
+          "totalMs": 256.71699999999964,
+          "stagesMs": {
+            "decode": 6.083399999999983,
+            "parse": 64.2479000000003,
+            "transform": 37.01329999999962,
+            "serialize": 134.97610000000032,
+            "encode": 14.335000000000036
+          },
+          "outputBytes": 6373916,
+          "outputSha256": "6a455d3bb44ffd56993db774778672dc5abcf305389e93796d3079b13012b2b9",
+          "heapBefore": 18548792,
+          "sampledHeapMax": 127883192,
+          "heapAfter": 122682872,
+          "rssAfter": 431067136
+        },
+        {
+          "totalMs": 259.5886999999998,
+          "stagesMs": {
+            "decode": 6.847899999999754,
+            "parse": 64.39780000000019,
+            "transform": 37.614900000000034,
+            "serialize": 136.1604000000002,
+            "encode": 14.51279999999997
+          },
+          "outputBytes": 6373916,
+          "outputSha256": "6a455d3bb44ffd56993db774778672dc5abcf305389e93796d3079b13012b2b9",
+          "heapBefore": 18549168,
+          "sampledHeapMax": 127846960,
+          "heapAfter": 121086008,
+          "rssAfter": 431181824
+        },
+        {
+          "totalMs": 253.7754,
+          "stagesMs": {
+            "decode": 6.142499999999927,
+            "parse": 64.14480000000003,
+            "transform": 38.41439999999966,
+            "serialize": 130.95820000000003,
+            "encode": 14.058399999999892
+          },
+          "outputBytes": 6373916,
+          "outputSha256": "6a455d3bb44ffd56993db774778672dc5abcf305389e93796d3079b13012b2b9",
+          "heapBefore": 17000312,
+          "sampledHeapMax": 126283064,
+          "heapAfter": 120850448,
+          "rssAfter": 430714880
+        }
+      ]
+    },
+    {
+      "id": "serial-three-50000",
+      "cueCount": 50000,
+      "fileCount": 1,
+      "mode": "serial-three",
+      "inputBytesPerFile": 6715220,
+      "inputBytes": 6715220,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 603.8135000000002,
+        "min": 601.6589999999997,
+        "max": 620.5440999999996
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 17.484300000000985,
+          "min": 17.131400000000212,
+          "max": 18.215800000000854
+        },
+        "parse": {
+          "median": 183.76659999999902,
+          "min": 179.6877000000004,
+          "max": 184.8732000000009
+        },
+        "transform": {
+          "median": 58.32140000000072,
+          "min": 58.1882999999998,
+          "max": 58.92069999999967
+        },
+        "serialize": {
+          "median": 305.26650000000063,
+          "min": 300.7569000000003,
+          "max": 317.0333999999998
+        },
+        "encode": {
+          "median": 42.55369999999948,
+          "min": 42.407499999999345,
+          "max": 42.61689999999999
+        }
+      },
+      "outputBytes": 6291304,
+      "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 16710384,
+          "min": 16706712,
+          "max": 16711136
+        },
+        "sampledHeapMaxBytes": 416741904,
+        "heapAfterBytes": {
+          "median": 416604592,
+          "min": 416538616,
+          "max": 416742304
+        },
+        "rssAfterBytes": {
+          "median": 704200704,
+          "min": 702476288,
+          "max": 704716800
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 620.5440999999996,
+          "stagesMs": {
+            "decode": 17.619100000000344,
+            "parse": 184.8732000000009,
+            "transform": 58.28250000000071,
+            "serialize": 317.0333999999998,
+            "encode": 42.55369999999948
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 16706712,
+          "sampledHeapMax": 416587680,
+          "heapAfter": 416588176,
+          "rssAfter": 704200704
+        },
+        {
+          "totalMs": 613.6665000000003,
+          "stagesMs": {
+            "decode": 17.131400000000212,
+            "parse": 183.76659999999902,
+            "transform": 58.32140000000072,
+            "serialize": 311.8561000000009,
+            "encode": 42.407499999999345
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 16707016,
+          "sampledHeapMax": 416720960,
+          "heapAfter": 416721360,
+          "rssAfter": 704147456
+        },
+        {
+          "totalMs": 603.5406999999996,
+          "stagesMs": {
+            "decode": 18.215800000000854,
+            "parse": 183.76950000000033,
+            "transform": 58.1882999999998,
+            "serialize": 300.7569000000003,
+            "encode": 42.45209999999952
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 16710384,
+          "sampledHeapMax": 416604192,
+          "heapAfter": 416604592,
+          "rssAfter": 704716800
+        },
+        {
+          "totalMs": 603.8135000000002,
+          "stagesMs": {
+            "decode": 17.484300000000985,
+            "parse": 179.6877000000004,
+            "transform": 58.66780000000017,
+            "serialize": 305.26650000000063,
+            "encode": 42.555600000000595
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 16710760,
+          "sampledHeapMax": 416538216,
+          "heapAfter": 416538616,
+          "rssAfter": 704569344
+        },
+        {
+          "totalMs": 601.6589999999997,
+          "stagesMs": {
+            "decode": 17.289600000000064,
+            "parse": 181.29459999999926,
+            "transform": 58.92069999999967,
+            "serialize": 301.3810999999996,
+            "encode": 42.61689999999999
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 16711136,
+          "sampledHeapMax": 416741904,
+          "heapAfter": 416742304,
+          "rssAfter": 702476288
+        }
+      ]
+    },
+    {
+      "id": "batch-serial-three-10",
+      "cueCount": 1000,
+      "fileCount": 10,
+      "mode": "serial-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 1305670,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 104.71120000000064,
+        "min": 103.46059999999943,
+        "max": 119.15599999999995
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 4.779600000000755,
+          "min": 4.477000000000771,
+          "max": 5.3421999999991385
+        },
+        "parse": {
+          "median": 28.67580000000089,
+          "min": 28.122299999999086,
+          "max": 31.052199999998265
+        },
+        "transform": {
+          "median": 12.559399999997368,
+          "min": 12.426400000003014,
+          "max": 14.113099999999577
+        },
+        "serialize": {
+          "median": 48.881900000000314,
+          "min": 48.57079999999951,
+          "max": 56.7325000000028
+        },
+        "encode": {
+          "median": 9.552300000000287,
+          "min": 9.366899999998168,
+          "max": 11.433200000001307
+        }
+      },
+      "outputBytes": 1221580,
+      "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 16719808,
+          "min": 16717168,
+          "max": 16720560
+        },
+        "sampledHeapMaxBytes": 92120408,
+        "heapAfterBytes": {
+          "median": 28791344,
+          "min": 28753144,
+          "max": 28839240
+        },
+        "rssAfterBytes": {
+          "median": 558948352,
+          "min": 557129728,
+          "max": 559042560
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 104.71120000000064,
+          "stagesMs": {
+            "decode": 4.877700000000914,
+            "parse": 28.511499999999614,
+            "transform": 12.559399999997368,
+            "serialize": 48.881900000000314,
+            "encode": 9.552300000000287
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 16717168,
+          "sampledHeapMax": 92117016,
+          "heapAfter": 28836224,
+          "rssAfter": 558952448
+        },
+        {
+          "totalMs": 105.4970000000003,
+          "stagesMs": {
+            "decode": 4.779600000000755,
+            "parse": 28.67580000000089,
+            "transform": 12.426400000003014,
+            "serialize": 49.51730000000134,
+            "encode": 9.757299999999304
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 16717472,
+          "sampledHeapMax": 92097112,
+          "heapAfter": 28753144,
+          "rssAfter": 558948352
+        },
+        {
+          "totalMs": 119.15599999999995,
+          "stagesMs": {
+            "decode": 5.3421999999991385,
+            "parse": 31.052199999998265,
+            "transform": 14.113099999999577,
+            "serialize": 56.7325000000028,
+            "encode": 11.433200000001307
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 16719808,
+          "sampledHeapMax": 92025984,
+          "heapAfter": 28791344,
+          "rssAfter": 559042560
+        },
+        {
+          "totalMs": 103.46059999999943,
+          "stagesMs": {
+            "decode": 4.486699999996745,
+            "parse": 28.122299999999086,
+            "transform": 12.456299999998919,
+            "serialize": 48.669700000000375,
+            "encode": 9.43829999999707
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 16720184,
+          "sampledHeapMax": 92120032,
+          "heapAfter": 28839240,
+          "rssAfter": 557129728
+        },
+        {
+          "totalMs": 104.05280000000221,
+          "stagesMs": {
+            "decode": 4.477000000000771,
+            "parse": 28.74080000000413,
+            "transform": 12.586100000000442,
+            "serialize": 48.57079999999951,
+            "encode": 9.366899999998168
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 16720560,
+          "sampledHeapMax": 92120408,
+          "heapAfter": 28758632,
+          "rssAfter": 558833664
+        }
+      ]
+    },
+    {
+      "id": "batch-serial-three-50",
+      "cueCount": 1000,
+      "fileCount": 50,
+      "mode": "serial-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 6528350,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 522.4177000000036,
+        "min": 519.1229000000058,
+        "max": 540.3099999999995
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 23.150299999999334,
+          "min": 23.06860000000961,
+          "max": 23.51539999999295
+        },
+        "parse": {
+          "median": 146.57170000000406,
+          "min": 146.14960000000337,
+          "max": 153.58709999999337
+        },
+        "transform": {
+          "median": 58.723500000003696,
+          "min": 57.74179999999615,
+          "max": 61.14040000000023
+        },
+        "serialize": {
+          "median": 244.76950000000033,
+          "min": 242.48959999999897,
+          "max": 251.30140000000756
+        },
+        "encode": {
+          "median": 48.05780000001323,
+          "min": 47.5457000000024,
+          "max": 49.84440000000177
+        }
+      },
+      "outputBytes": 6107900,
+      "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 16785328,
+          "min": 16729016,
+          "max": 16786680
+        },
+        "sampledHeapMaxBytes": 95072840,
+        "heapAfterBytes": {
+          "median": 56397680,
+          "min": 56254608,
+          "max": 61239264
+        },
+        "rssAfterBytes": {
+          "median": 561213440,
+          "min": 561106944,
+          "max": 563310592
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 520.1307999999981,
+          "stagesMs": {
+            "decode": 23.150299999999334,
+            "parse": 146.14960000000337,
+            "transform": 58.723500000003696,
+            "serialize": 243.04159999999683,
+            "encode": 47.5457000000024
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 16729016,
+          "sampledHeapMax": 95072840,
+          "heapAfter": 61239264,
+          "rssAfter": 563310592
+        },
+        {
+          "totalMs": 522.4177000000036,
+          "stagesMs": {
+            "decode": 23.148700000012468,
+            "parse": 146.57170000000406,
+            "transform": 58.30970000000525,
+            "serialize": 244.76950000000033,
+            "encode": 48.05780000001323
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 16784952,
+          "sampledHeapMax": 93708416,
+          "heapAfter": 56397680,
+          "rssAfter": 561537024
+        },
+        {
+          "totalMs": 519.1229000000058,
+          "stagesMs": {
+            "decode": 23.51539999999295,
+            "parse": 146.16370000001007,
+            "transform": 57.74179999999615,
+            "serialize": 242.48959999999897,
+            "encode": 47.59640000001855
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 16785328,
+          "sampledHeapMax": 93887880,
+          "heapAfter": 56254608,
+          "rssAfter": 561123328
+        },
+        {
+          "totalMs": 530.5321999999996,
+          "stagesMs": {
+            "decode": 23.208599999999933,
+            "parse": 150.384800000018,
+            "transform": 59.515000000003056,
+            "serialize": 247.03799999999865,
+            "encode": 48.64049999999952
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 16785920,
+          "sampledHeapMax": 93809360,
+          "heapAfter": 56316120,
+          "rssAfter": 561106944
+        },
+        {
+          "totalMs": 540.3099999999995,
+          "stagesMs": {
+            "decode": 23.06860000000961,
+            "parse": 153.58709999999337,
+            "transform": 61.14040000000023,
+            "serialize": 251.30140000000756,
+            "encode": 49.84440000000177
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 16786680,
+          "sampledHeapMax": 93893384,
+          "heapAfter": 56459168,
+          "rssAfter": 561213440
+        }
+      ]
+    },
+    {
+      "id": "batch-serial-three-100",
+      "cueCount": 1000,
+      "fileCount": 100,
+      "mode": "serial-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 13056700,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 1039.3945000000112,
+        "min": 1029.0746999999974,
+        "max": 1052.0122000000047
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 44.87440000002425,
+          "min": 44.62919999996666,
+          "max": 45.709100000000035
+        },
+        "parse": {
+          "median": 294.4446000000098,
+          "min": 291.42009999999937,
+          "max": 298.02279999998063
+        },
+        "transform": {
+          "median": 115.10789999999724,
+          "min": 114.31250000001273,
+          "max": 116.09639999999854
+        },
+        "serialize": {
+          "median": 487.08099999998194,
+          "min": 480.0167999999994,
+          "max": 492.9556000000284
+        },
+        "encode": {
+          "median": 95.39029999999184,
+          "min": 94.52150000002803,
+          "max": 95.88429999998698
+        }
+      },
+      "outputBytes": 12215800,
+      "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 16801648,
+          "min": 16793416,
+          "max": 16807016
+        },
+        "sampledHeapMaxBytes": 97156432,
+        "heapAfterBytes": {
+          "median": 97101392,
+          "min": 95724840,
+          "max": 97156816
+        },
+        "rssAfterBytes": {
+          "median": 568348672,
+          "min": 568049664,
+          "max": 568373248
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 1029.0746999999974,
+          "stagesMs": {
+            "decode": 44.634000000000015,
+            "parse": 291.42009999999937,
+            "transform": 114.31250000001273,
+            "serialize": 480.0167999999994,
+            "encode": 95.39029999999184
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 16793416,
+          "sampledHeapMax": 96660440,
+          "heapAfter": 95724840,
+          "rssAfter": 568348672
+        },
+        {
+          "totalMs": 1039.3945000000112,
+          "stagesMs": {
+            "decode": 44.87440000002425,
+            "parse": 294.4446000000098,
+            "transform": 114.64880000000812,
+            "serialize": 487.08099999998194,
+            "encode": 95.19080000000395
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 16797288,
+          "sampledHeapMax": 97096496,
+          "heapAfter": 97096896,
+          "rssAfter": 568373248
+        },
+        {
+          "totalMs": 1043.9711000000116,
+          "stagesMs": {
+            "decode": 45.538100000005215,
+            "parse": 294.99270000000797,
+            "transform": 115.10789999999724,
+            "serialize": 489.48999999998523,
+            "encode": 95.59030000000712
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 16801648,
+          "sampledHeapMax": 97101008,
+          "heapAfter": 97101392,
+          "rssAfter": 568360960
+        },
+        {
+          "totalMs": 1052.0122000000047,
+          "stagesMs": {
+            "decode": 45.709100000000035,
+            "parse": 298.02279999998063,
+            "transform": 116.09639999999854,
+            "serialize": 492.9556000000284,
+            "encode": 95.88429999998698
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 16806112,
+          "sampledHeapMax": 97156432,
+          "heapAfter": 97156816,
+          "rssAfter": 568049664
+        },
+        {
+          "totalMs": 1037.3124999999982,
+          "stagesMs": {
+            "decode": 44.62919999996666,
+            "parse": 293.9520000000248,
+            "transform": 115.3136000000195,
+            "serialize": 485.6520000000146,
+            "encode": 94.52150000002803
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 16807016,
+          "sampledHeapMax": 97104296,
+          "heapAfter": 97104680,
+          "rssAfter": 568217600
+        }
+      ]
+    },
+    {
+      "id": "workflow-three-100",
+      "cueCount": 100,
+      "fileCount": 1,
+      "mode": "workflow-three",
+      "inputBytesPerFile": 12809,
+      "inputBytes": 12809,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 0.836699999999837,
+        "min": 0.781700000003184,
+        "max": 0.9039999999986321
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.029500000000552973,
+          "min": 0.02419999999983702,
+          "max": 0.03080000000045402
+        },
+        "parse": {
+          "median": 0.13940000000002328,
+          "min": 0.11939999999958673,
+          "max": 0.15089999999690917
+        },
+        "transform": {
+          "median": 0.42730000000301516,
+          "min": 0.3820999999988999,
+          "max": 0.5200000000004366
+        },
+        "serialize": {
+          "median": 0.17669999999998254,
+          "min": 0.15999999999985448,
+          "max": 0.21600000000034925
+        },
+        "encode": {
+          "median": 0.034299999999348074,
+          "min": 0.03220000000146683,
+          "max": 0.036700000000564614
+        }
+      },
+      "outputBytes": 11953,
+      "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17101720,
+          "min": 17027472,
+          "max": 17143112
+        },
+        "sampledHeapMaxBytes": 18329968,
+        "heapAfterBytes": {
+          "median": 18221712,
+          "min": 18204560,
+          "max": 18330328
+        },
+        "rssAfterBytes": {
+          "median": 554172416,
+          "min": 553480192,
+          "max": 554430464
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 0.9039999999986321,
+          "stagesMs": {
+            "decode": 0.029500000000552973,
+            "parse": 0.13119999999980791,
+            "transform": 0.5200000000004366,
+            "serialize": 0.17669999999998254,
+            "encode": 0.034299999999348074
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 17027472,
+          "sampledHeapMax": 18329968,
+          "heapAfter": 18330328,
+          "rssAfter": 554172416
+        },
+        {
+          "totalMs": 0.8408000000017637,
+          "stagesMs": {
+            "decode": 0.03080000000045402,
+            "parse": 0.11939999999958673,
+            "transform": 0.42730000000301516,
+            "serialize": 0.21600000000034925,
+            "encode": 0.03220000000146683
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 17101720,
+          "sampledHeapMax": 18207744,
+          "heapAfter": 18208104,
+          "rssAfter": 554213376
+        },
+        {
+          "totalMs": 0.8165999999982887,
+          "stagesMs": {
+            "decode": 0.02419999999983702,
+            "parse": 0.13940000000002328,
+            "transform": 0.44809999999779393,
+            "serialize": 0.15999999999985448,
+            "encode": 0.03240000000005239
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 17107936,
+          "sampledHeapMax": 18204200,
+          "heapAfter": 18204560,
+          "rssAfter": 554430464
+        },
+        {
+          "totalMs": 0.836699999999837,
+          "stagesMs": {
+            "decode": 0.0268999999971129,
+            "parse": 0.142600000002858,
+            "transform": 0.41019999999844003,
+            "serialize": 0.20790000000124564,
+            "encode": 0.036700000000564614
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 17099064,
+          "sampledHeapMax": 18221352,
+          "heapAfter": 18221712,
+          "rssAfter": 553480192
+        },
+        {
+          "totalMs": 0.781700000003184,
+          "stagesMs": {
+            "decode": 0.0301999999974214,
+            "parse": 0.15089999999690917,
+            "transform": 0.3820999999988999,
+            "serialize": 0.16930000000138534,
+            "encode": 0.03600000000005821
+          },
+          "outputBytes": 11953,
+          "outputSha256": "07b113baa5a023f86ef75193ab9ba982d8e760b0e751738b4340c9034e8d0286",
+          "heapBefore": 17143112,
+          "sampledHeapMax": 18238480,
+          "heapAfter": 18238840,
+          "rssAfter": 554037248
+        }
+      ]
+    },
+    {
+      "id": "workflow-three-1000",
+      "cueCount": 1000,
+      "fileCount": 1,
+      "mode": "workflow-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 130567,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 5.101600000001781,
+        "min": 5.0384999999987485,
+        "max": 5.325199999999313
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.15859999999884167,
+          "min": 0.1496999999981199,
+          "max": 0.1849000000001979
+        },
+        "parse": {
+          "median": 0.9887000000016997,
+          "min": 0.978899999998248,
+          "max": 1.0349000000023807
+        },
+        "transform": {
+          "median": 1.9519000000000233,
+          "min": 1.8923999999969965,
+          "max": 2.082800000000134
+        },
+        "serialize": {
+          "median": 1.6738000000004831,
+          "min": 1.639100000000326,
+          "max": 1.718300000000454
+        },
+        "encode": {
+          "median": 0.3050999999977648,
+          "min": 0.3040000000000873,
+          "max": 0.3430000000007567
+        }
+      },
+      "outputBytes": 122158,
+      "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17054544,
+          "min": 17041816,
+          "max": 17756096
+        },
+        "sampledHeapMaxBytes": 28185752,
+        "heapAfterBytes": {
+          "median": 27492056,
+          "min": 27479328,
+          "max": 28186112
+        },
+        "rssAfterBytes": {
+          "median": 555683840,
+          "min": 555667456,
+          "max": 555683840
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 5.174199999997654,
+          "stagesMs": {
+            "decode": 0.1849000000001979,
+            "parse": 0.9913999999989755,
+            "transform": 1.9519000000000233,
+            "serialize": 1.6863000000012107,
+            "encode": 0.3430000000007567
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 17041816,
+          "sampledHeapMax": 27476928,
+          "heapAfter": 27479704,
+          "rssAfter": 555667456
+        },
+        {
+          "totalMs": 5.325199999999313,
+          "stagesMs": {
+            "decode": 0.15859999999884167,
+            "parse": 1.0349000000023807,
+            "transform": 2.082800000000134,
+            "serialize": 1.718300000000454,
+            "encode": 0.30420000000231084
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 17043624,
+          "sampledHeapMax": 27485808,
+          "heapAfter": 27492056,
+          "rssAfter": 555675648
+        },
+        {
+          "totalMs": 5.0384999999987485,
+          "stagesMs": {
+            "decode": 0.15279999999984284,
+            "parse": 0.9868999999998778,
+            "transform": 1.8923999999969965,
+            "serialize": 1.6738000000004831,
+            "encode": 0.3065999999998894
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 17054544,
+          "sampledHeapMax": 27476280,
+          "heapAfter": 27479328,
+          "rssAfter": 555683840
+        },
+        {
+          "totalMs": 5.069500000001426,
+          "stagesMs": {
+            "decode": 0.17410000000018044,
+            "parse": 0.978899999998248,
+            "transform": 1.9417000000030384,
+            "serialize": 1.6516000000010536,
+            "encode": 0.3050999999977648
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 17750592,
+          "sampledHeapMax": 28185752,
+          "heapAfter": 28186112,
+          "rssAfter": 555683840
+        },
+        {
+          "totalMs": 5.101600000001781,
+          "stagesMs": {
+            "decode": 0.1496999999981199,
+            "parse": 0.9887000000016997,
+            "transform": 2.006199999999808,
+            "serialize": 1.639100000000326,
+            "encode": 0.3040000000000873
+          },
+          "outputBytes": 122158,
+          "outputSha256": "ca33faa29c5b174be695740de838b8ea9ef2e54d7ea4da1246d651add576c512",
+          "heapBefore": 17756096,
+          "sampledHeapMax": 28185120,
+          "heapAfter": 28185480,
+          "rssAfter": 555683840
+        }
+      ]
+    },
+    {
+      "id": "workflow-three-10000",
+      "cueCount": 10000,
+      "fileCount": 1,
+      "mode": "workflow-three",
+      "inputBytesPerFile": 1325642,
+      "inputBytes": 1325642,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 55.1890999999996,
+        "min": 51.838700000000244,
+        "max": 56.296800000000076
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 1.1548000000002503,
+          "min": 1.093300000000454,
+          "max": 1.1696000000010827
+        },
+        "parse": {
+          "median": 9.970100000002276,
+          "min": 9.776300000001356,
+          "max": 10.191900000001624
+        },
+        "transform": {
+          "median": 20.77140000000145,
+          "min": 18.921599999997852,
+          "max": 22.308499999999185
+        },
+        "serialize": {
+          "median": 19.38169999999809,
+          "min": 18.668900000000576,
+          "max": 20.491400000002614
+        },
+        "encode": {
+          "median": 3.1686999999983527,
+          "min": 3.1454999999987194,
+          "max": 3.1931000000004133
+        }
+      },
+      "outputBytes": 1241286,
+      "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17072344,
+          "min": 17063576,
+          "max": 17072920
+        },
+        "sampledHeapMaxBytes": 79617784,
+        "heapAfterBytes": {
+          "median": 59580136,
+          "min": 59569808,
+          "max": 59657552
+        },
+        "rssAfterBytes": {
+          "median": 565760000,
+          "min": 565510144,
+          "max": 565800960
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 51.838700000000244,
+          "stagesMs": {
+            "decode": 1.093300000000454,
+            "parse": 9.970100000002276,
+            "transform": 18.921599999997852,
+            "serialize": 18.668900000000576,
+            "encode": 3.149199999999837
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 17063576,
+          "sampledHeapMax": 79617784,
+          "heapAfter": 59569808,
+          "rssAfter": 565510144
+        },
+        {
+          "totalMs": 55.1890999999996,
+          "stagesMs": {
+            "decode": 1.1548000000002503,
+            "parse": 9.933000000000902,
+            "transform": 21.67949999999837,
+            "serialize": 19.208200000000943,
+            "encode": 3.1686999999983527
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 17064728,
+          "sampledHeapMax": 79364184,
+          "heapAfter": 59578456,
+          "rssAfter": 565760000
+        },
+        {
+          "totalMs": 55.39440000000104,
+          "stagesMs": {
+            "decode": 1.138600000002043,
+            "parse": 9.776300000001356,
+            "transform": 20.77140000000145,
+            "serialize": 20.491400000002614,
+            "encode": 3.172099999999773
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 17072344,
+          "sampledHeapMax": 79365864,
+          "heapAfter": 59580136,
+          "rssAfter": 565760000
+        },
+        {
+          "totalMs": 56.296800000000076,
+          "stagesMs": {
+            "decode": 1.1696000000010827,
+            "parse": 10.191900000001624,
+            "transform": 22.308499999999185,
+            "serialize": 19.38169999999809,
+            "encode": 3.1931000000004133
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 17072544,
+          "sampledHeapMax": 79364624,
+          "heapAfter": 59657552,
+          "rssAfter": 565788672
+        },
+        {
+          "totalMs": 53.66269999999713,
+          "stagesMs": {
+            "decode": 1.156200000001263,
+            "parse": 10.131099999998696,
+            "transform": 19.252599999999802,
+            "serialize": 19.932600000000093,
+            "encode": 3.1454999999987194
+          },
+          "outputBytes": 1241286,
+          "outputSha256": "bf24b2a592192e3d66fb28a88eb73d0d32eec9d9f8f6478c21b159d02af5f1d3",
+          "heapBefore": 17072920,
+          "sampledHeapMax": 79366616,
+          "heapAfter": 59580584,
+          "rssAfter": 565800960
+        }
+      ]
+    },
+    {
+      "id": "workflow-three-50000",
+      "cueCount": 50000,
+      "fileCount": 1,
+      "mode": "workflow-three",
+      "inputBytesPerFile": 6715220,
+      "inputBytes": 6715220,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 295.1830999999984,
+        "min": 290.58840000000055,
+        "max": 387.8660999999993
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 6.034199999998236,
+          "min": 5.8531999999977415,
+          "max": 6.253100000001723
+        },
+        "parse": {
+          "median": 62.977600000001985,
+          "min": 61.47479999999996,
+          "max": 63.5554000000011
+        },
+        "transform": {
+          "median": 96.8768999999993,
+          "min": 94.38650000000052,
+          "max": 117.20040000000154
+        },
+        "serialize": {
+          "median": 115.25979999999981,
+          "min": 114.82689999999639,
+          "max": 187.0154999999977
+        },
+        "encode": {
+          "median": 13.754100000001927,
+          "min": 13.731700000000274,
+          "max": 14.026200000000244
+        }
+      },
+      "outputBytes": 6291304,
+      "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17081208,
+          "min": 17074920,
+          "max": 17081960
+        },
+        "sampledHeapMaxBytes": 158212568,
+        "heapAfterBytes": {
+          "median": 114994984,
+          "min": 114953888,
+          "max": 158212928
+        },
+        "rssAfterBytes": {
+          "median": 600862720,
+          "min": 598343680,
+          "max": 603566080
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 387.8660999999993,
+          "stagesMs": {
+            "decode": 6.253100000001723,
+            "parse": 63.5554000000011,
+            "transform": 117.20040000000154,
+            "serialize": 187.0154999999977,
+            "encode": 13.78570000000036
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 17074920,
+          "sampledHeapMax": 158212568,
+          "heapAfter": 158212928,
+          "rssAfter": 603566080
+        },
+        {
+          "totalMs": 297.6941000000006,
+          "stagesMs": {
+            "decode": 6.241799999999785,
+            "parse": 62.977600000001985,
+            "transform": 99.56850000000122,
+            "serialize": 115.1131000000023,
+            "encode": 13.731700000000274
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 17076320,
+          "sampledHeapMax": 154749320,
+          "heapAfter": 114953888,
+          "rssAfter": 600862720
+        },
+        {
+          "totalMs": 295.1830999999984,
+          "stagesMs": {
+            "decode": 6.034199999998236,
+            "parse": 63.210399999999936,
+            "transform": 96.8768999999993,
+            "serialize": 115.25979999999981,
+            "encode": 13.751899999999296
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 17081208,
+          "sampledHeapMax": 154740896,
+          "heapAfter": 114994984,
+          "rssAfter": 601640960
+        },
+        {
+          "totalMs": 290.58840000000055,
+          "stagesMs": {
+            "decode": 5.988699999998062,
+            "parse": 61.58250000000044,
+            "transform": 94.38650000000052,
+            "serialize": 114.82689999999639,
+            "encode": 13.754100000001927
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 17081584,
+          "sampledHeapMax": 154735128,
+          "heapAfter": 114991144,
+          "rssAfter": 599879680
+        },
+        {
+          "totalMs": 293.7778999999973,
+          "stagesMs": {
+            "decode": 5.8531999999977415,
+            "parse": 61.47479999999996,
+            "transform": 95.85120000000097,
+            "serialize": 116.52580000000307,
+            "encode": 14.026200000000244
+          },
+          "outputBytes": 6291304,
+          "outputSha256": "7159fc93538e4e95f2f288264743448de1711d977172fc9a32a69454d807c7cc",
+          "heapBefore": 17081960,
+          "sampledHeapMax": 154762512,
+          "heapAfter": 115009632,
+          "rssAfter": 598343680
+        }
+      ]
+    },
+    {
+      "id": "batch-workflow-three-10",
+      "cueCount": 1000,
+      "fileCount": 10,
+      "mode": "workflow-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 1305670,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 47.99039999999877,
+        "min": 47.15889999999854,
+        "max": 50.44570000000385
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 1.5952000000033877,
+          "min": 1.5200999999942724,
+          "max": 1.6591999999982363
+        },
+        "parse": {
+          "median": 10.6179000000011,
+          "min": 10.413999999993393,
+          "max": 11.666099999994913
+        },
+        "transform": {
+          "median": 16.95820000000822,
+          "min": 16.61720000000423,
+          "max": 17.793799999995827
+        },
+        "serialize": {
+          "median": 15.81499999999869,
+          "min": 15.374099999993632,
+          "max": 16.39310000000114
+        },
+        "encode": {
+          "median": 3.0908999999955995,
+          "min": 3.0504999999902793,
+          "max": 3.1784999999908905
+        }
+      },
+      "outputBytes": 1221580,
+      "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17084784,
+          "min": 17078384,
+          "max": 17112968
+        },
+        "sampledHeapMaxBytes": 89770192,
+        "heapAfterBytes": {
+          "median": 47845304,
+          "min": 47725720,
+          "max": 47848528
+        },
+        "rssAfterBytes": {
+          "median": 559038464,
+          "min": 558985216,
+          "max": 559243264
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 50.44570000000385,
+          "stagesMs": {
+            "decode": 1.6591999999982363,
+            "parse": 11.666099999994913,
+            "transform": 17.793799999995827,
+            "serialize": 16.058200000003126,
+            "encode": 3.088500000001659
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 17078384,
+          "sampledHeapMax": 89764528,
+          "heapAfter": 47725720,
+          "rssAfter": 558985216
+        },
+        {
+          "totalMs": 47.849800000007235,
+          "stagesMs": {
+            "decode": 1.6085999999995693,
+            "parse": 10.6179000000011,
+            "transform": 16.61720000000423,
+            "serialize": 15.69340000000011,
+            "encode": 3.1784999999908905
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 17084784,
+          "sampledHeapMax": 89728952,
+          "heapAfter": 47846400,
+          "rssAfter": 559038464
+        },
+        {
+          "totalMs": 47.15889999999854,
+          "stagesMs": {
+            "decode": 1.5200999999942724,
+            "parse": 10.413999999993393,
+            "transform": 16.64150000000518,
+            "serialize": 15.374099999993632,
+            "encode": 3.0908999999955995
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 17084424,
+          "sampledHeapMax": 89727848,
+          "heapAfter": 47845304,
+          "rssAfter": 559038464
+        },
+        {
+          "totalMs": 47.99039999999877,
+          "stagesMs": {
+            "decode": 1.56779999999344,
+            "parse": 10.468099999994593,
+            "transform": 16.95820000000822,
+            "serialize": 15.81499999999869,
+            "encode": 3.0504999999902793
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 17085672,
+          "sampledHeapMax": 89741240,
+          "heapAfter": 47832888,
+          "rssAfter": 559120384
+        },
+        {
+          "totalMs": 48.95119999999952,
+          "stagesMs": {
+            "decode": 1.5952000000033877,
+            "parse": 10.681000000004133,
+            "transform": 17.012400000006892,
+            "serialize": 16.39310000000114,
+            "encode": 3.13119999999617
+          },
+          "outputBytes": 1221580,
+          "outputSha256": "47a2ef8bf1a7452fcb1667adeba687545e7f995c16422ae53aefde230886ea5a",
+          "heapBefore": 17112968,
+          "sampledHeapMax": 89770192,
+          "heapAfter": 47848528,
+          "rssAfter": 559243264
+        }
+      ]
+    },
+    {
+      "id": "batch-workflow-three-50",
+      "cueCount": 1000,
+      "fileCount": 50,
+      "mode": "workflow-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 6528350,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 237.99349999999322,
+        "min": 236.34759999999005,
+        "max": 239.5311999999867
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 7.615200000000186,
+          "min": 7.339199999998527,
+          "max": 7.65599999999904
+        },
+        "parse": {
+          "median": 54.72589999999036,
+          "min": 54.511000000013155,
+          "max": 55.034899999995105
+        },
+        "transform": {
+          "median": 81.78210000000763,
+          "min": 80.14690000001428,
+          "max": 81.89589999999589
+        },
+        "serialize": {
+          "median": 78.1140000000014,
+          "min": 77.81710000000021,
+          "max": 78.70079999999871
+        },
+        "encode": {
+          "median": 15.541999999994005,
+          "min": 15.292100000009668,
+          "max": 15.704500000014377
+        }
+      },
+      "outputBytes": 6107900,
+      "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17143928,
+          "min": 17119592,
+          "max": 17159032
+        },
+        "sampledHeapMaxBytes": 90133440,
+        "heapAfterBytes": {
+          "median": 28102080,
+          "min": 28029456,
+          "max": 28108040
+        },
+        "rssAfterBytes": {
+          "median": 558100480,
+          "min": 557359104,
+          "max": 558530560
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 239.5311999999867,
+          "stagesMs": {
+            "decode": 7.615200000000186,
+            "parse": 55.034899999995105,
+            "transform": 81.78210000000763,
+            "serialize": 78.70079999999871,
+            "encode": 15.541999999994005
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 17146352,
+          "sampledHeapMax": 90076728,
+          "heapAfter": 28107656,
+          "rssAfter": 557805568
+        },
+        {
+          "totalMs": 236.34759999999005,
+          "stagesMs": {
+            "decode": 7.339199999998527,
+            "parse": 54.688099999999395,
+            "transform": 80.14690000001428,
+            "serialize": 78.27939999998489,
+            "encode": 15.292100000009668
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 17119592,
+          "sampledHeapMax": 90089152,
+          "heapAfter": 28082696,
+          "rssAfter": 558530560
+        },
+        {
+          "totalMs": 237.99349999999322,
+          "stagesMs": {
+            "decode": 7.623800000001211,
+            "parse": 54.511000000013155,
+            "transform": 81.39780000000246,
+            "serialize": 78.1140000000014,
+            "encode": 15.704500000014377
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 17122840,
+          "sampledHeapMax": 90133440,
+          "heapAfter": 28102080,
+          "rssAfter": 557359104
+        },
+        {
+          "totalMs": 237.97019999999975,
+          "stagesMs": {
+            "decode": 7.461000000002969,
+            "parse": 54.72589999999036,
+            "transform": 81.89589999999589,
+            "serialize": 77.81710000000021,
+            "encode": 15.393500000005588
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 17143928,
+          "sampledHeapMax": 90114736,
+          "heapAfter": 28108040,
+          "rssAfter": 558264320
+        },
+        {
+          "totalMs": 238.67670000001817,
+          "stagesMs": {
+            "decode": 7.65599999999904,
+            "parse": 54.877099999972415,
+            "transform": 81.78630000001067,
+            "serialize": 78.02240000000165,
+            "encode": 15.60309999997844
+          },
+          "outputBytes": 6107900,
+          "outputSha256": "326f2c9ed8881f683ee82ce2f3fc17d34674ecddc2caf8dc57d07491a4266e39",
+          "heapBefore": 17159032,
+          "sampledHeapMax": 90037832,
+          "heapAfter": 28029456,
+          "rssAfter": 558100480
+        }
+      ]
+    },
+    {
+      "id": "batch-workflow-three-100",
+      "cueCount": 1000,
+      "fileCount": 100,
+      "mode": "workflow-three",
+      "inputBytesPerFile": 130567,
+      "inputBytes": 13056700,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 478.8507999999856,
+        "min": 476.85329999996975,
+        "max": 486.5110000000277
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 15.290800000009767,
+          "min": 14.927700000025652,
+          "max": 15.509099999981117
+        },
+        "parse": {
+          "median": 110.6938000000082,
+          "min": 109.70640000001731,
+          "max": 111.96660000001793
+        },
+        "transform": {
+          "median": 162.8265000000174,
+          "min": 161.89219999998386,
+          "max": 165.54180000000997
+        },
+        "serialize": {
+          "median": 157.60769999998593,
+          "min": 156.13819999999032,
+          "max": 161.10949999999502
+        },
+        "encode": {
+          "median": 30.944400000003952,
+          "min": 30.65829999999187,
+          "max": 31.40709999999308
+        }
+      },
+      "outputBytes": 12215800,
+      "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17195720,
+          "min": 17186488,
+          "max": 17234232
+        },
+        "sampledHeapMaxBytes": 91834536,
+        "heapAfterBytes": {
+          "median": 40163696,
+          "min": 40122032,
+          "max": 40205120
+        },
+        "rssAfterBytes": {
+          "median": 560648192,
+          "min": 559894528,
+          "max": 561053696
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 478.8507999999856,
+          "stagesMs": {
+            "decode": 15.318799999997282,
+            "parse": 111.96660000001793,
+            "transform": 162.8265000000174,
+            "serialize": 156.13819999999032,
+            "encode": 31.0137999999788
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 17186880,
+          "sampledHeapMax": 91834536,
+          "heapAfter": 40166512,
+          "rssAfter": 560648192
+        },
+        {
+          "totalMs": 477.7397000000128,
+          "stagesMs": {
+            "decode": 15.221900000004098,
+            "parse": 110.6938000000082,
+            "transform": 161.89219999998386,
+            "serialize": 157.60399999999572,
+            "encode": 30.852399999992485
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 17213008,
+          "sampledHeapMax": 91768608,
+          "heapAfter": 40161720,
+          "rssAfter": 560873472
+        },
+        {
+          "totalMs": 486.5110000000277,
+          "stagesMs": {
+            "decode": 15.509099999981117,
+            "parse": 111.2700000000259,
+            "transform": 165.54180000000997,
+            "serialize": 161.10949999999502,
+            "encode": 31.40709999999308
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 17234232,
+          "sampledHeapMax": 91788048,
+          "heapAfter": 40205120,
+          "rssAfter": 560250880
+        },
+        {
+          "totalMs": 476.85329999996975,
+          "stagesMs": {
+            "decode": 14.927700000025652,
+            "parse": 109.70640000001731,
+            "transform": 162.6020000000135,
+            "serialize": 157.63609999999608,
+            "encode": 30.65829999999187
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 17186488,
+          "sampledHeapMax": 91761232,
+          "heapAfter": 40163696,
+          "rssAfter": 559894528
+        },
+        {
+          "totalMs": 479.278199999997,
+          "stagesMs": {
+            "decode": 15.290800000009767,
+            "parse": 109.82380000000558,
+            "transform": 164.13889999999446,
+            "serialize": 157.60769999998593,
+            "encode": 30.944400000003952
+          },
+          "outputBytes": 12215800,
+          "outputSha256": "236b6a2c34de3a6c2368e2a57f3e5de6d24345bdf423ba4ed50f2270aee21024",
+          "heapBefore": 17195720,
+          "sampledHeapMax": 91755744,
+          "heapAfter": 40122032,
+          "rssAfter": 561053696
+        }
+      ]
+    },
+    {
+      "id": "workflow-utf16le-1000",
+      "cueCount": 1000,
+      "fileCount": 1,
+      "mode": "workflow-three",
+      "encoding": "utf-16le",
+      "inputBytesPerFile": 226720,
+      "inputBytes": 226720,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 5.332000000002154,
+        "min": 5.229999999999563,
+        "max": 5.882900000000518
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.19139999999970314,
+          "min": 0.18170000000100117,
+          "max": 0.20820000000094296
+        },
+        "parse": {
+          "median": 1.0046000000002095,
+          "min": 0.9913000000015018,
+          "max": 1.085800000000745
+        },
+        "transform": {
+          "median": 1.9706000000005588,
+          "min": 1.9426999999996042,
+          "max": 2.1341000000029453
+        },
+        "serialize": {
+          "median": 1.7444999999970605,
+          "min": 1.7024000000019441,
+          "max": 1.8119999999980791
+        },
+        "encode": {
+          "median": 0.34839999999894644,
+          "min": 0.34420000000318396,
+          "max": 0.7753999999986263
+        }
+      },
+      "outputBytes": 209902,
+      "outputSha256": "51f2cdb3033a207221311e8480196184fe153e3fffc10a7861595ce1f881ccbf",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17179528,
+          "min": 17178728,
+          "max": 17858072
+        },
+        "sampledHeapMaxBytes": 28229640,
+        "heapAfterBytes": {
+          "median": 27566456,
+          "min": 27553640,
+          "max": 28232616
+        },
+        "rssAfterBytes": {
+          "median": 556195840,
+          "min": 555900928,
+          "max": 557002752
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 5.882900000000518,
+          "stagesMs": {
+            "decode": 0.20820000000094296,
+            "parse": 1.0135000000009313,
+            "transform": 2.0502999999989697,
+            "serialize": 1.8055999999996857,
+            "encode": 0.7753999999986263
+          },
+          "outputBytes": 209902,
+          "outputSha256": "51f2cdb3033a207221311e8480196184fe153e3fffc10a7861595ce1f881ccbf",
+          "heapBefore": 17179888,
+          "sampledHeapMax": 27603536,
+          "heapAfter": 27603824,
+          "rssAfter": 557002752
+        },
+        {
+          "totalMs": 5.465700000000652,
+          "stagesMs": {
+            "decode": 0.19139999999970314,
+            "parse": 0.996500000001106,
+            "transform": 2.1341000000029453,
+            "serialize": 1.7444999999970605,
+            "encode": 0.37920000000303844
+          },
+          "outputBytes": 209902,
+          "outputSha256": "51f2cdb3033a207221311e8480196184fe153e3fffc10a7861595ce1f881ccbf",
+          "heapBefore": 17179528,
+          "sampledHeapMax": 27561064,
+          "heapAfter": 27566456,
+          "rssAfter": 555900928
+        },
+        {
+          "totalMs": 5.229999999999563,
+          "stagesMs": {
+            "decode": 0.18170000000100117,
+            "parse": 0.9913000000015018,
+            "transform": 1.9706000000005588,
+            "serialize": 1.7024000000019441,
+            "encode": 0.34420000000318396
+          },
+          "outputBytes": 209902,
+          "outputSha256": "51f2cdb3033a207221311e8480196184fe153e3fffc10a7861595ce1f881ccbf",
+          "heapBefore": 17178728,
+          "sampledHeapMax": 27553000,
+          "heapAfter": 27558392,
+          "rssAfter": 556154880
+        },
+        {
+          "totalMs": 5.332000000002154,
+          "stagesMs": {
+            "decode": 0.19919999999910942,
+            "parse": 1.0046000000002095,
+            "transform": 1.9426999999996042,
+            "serialize": 1.8119999999980791,
+            "encode": 0.34839999999894644
+          },
+          "outputBytes": 209902,
+          "outputSha256": "51f2cdb3033a207221311e8480196184fe153e3fffc10a7861595ce1f881ccbf",
+          "heapBefore": 17178976,
+          "sampledHeapMax": 27550664,
+          "heapAfter": 27553640,
+          "rssAfter": 556195840
+        },
+        {
+          "totalMs": 5.331399999999121,
+          "stagesMs": {
+            "decode": 0.18620000000009895,
+            "parse": 1.085800000000745,
+            "transform": 1.96389999999883,
+            "serialize": 1.7202999999972235,
+            "encode": 0.3478999999970256
+          },
+          "outputBytes": 209902,
+          "outputSha256": "51f2cdb3033a207221311e8480196184fe153e3fffc10a7861595ce1f881ccbf",
+          "heapBefore": 17858072,
+          "sampledHeapMax": 28229640,
+          "heapAfter": 28232616,
+          "rssAfter": 556388352
+        }
+      ]
+    },
+    {
+      "id": "workflow-gb18030-1000",
+      "cueCount": 1000,
+      "fileCount": 1,
+      "mode": "workflow-three",
+      "encoding": "gb18030",
+      "inputBytesPerFile": 122919,
+      "inputBytes": 122919,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 8.405300000002171,
+        "min": 6.4848000000019965,
+        "max": 8.955300000001444
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.22109999999884167,
+          "min": 0.20669999999881838,
+          "max": 0.6404999999977008
+        },
+        "parse": {
+          "median": 1.0617000000020198,
+          "min": 0.9938000000001921,
+          "max": 1.22099999999773
+        },
+        "transform": {
+          "median": 2.0120999999999185,
+          "min": 1.8735000000015134,
+          "max": 2.2282999999988533
+        },
+        "serialize": {
+          "median": 1.812099999999191,
+          "min": 1.7242999999980384,
+          "max": 1.9072000000014668
+        },
+        "encode": {
+          "median": 2.8024999999979627,
+          "min": 1.5632000000005064,
+          "max": 3.765499999997701
+        }
+      },
+      "outputBytes": 114510,
+      "outputSha256": "6ef3a603e97fe5f869fd0c59e4245f4f75cc57115a0b7293fd64fc30337afd57",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 17237976,
+          "min": 17229920,
+          "max": 17251016
+        },
+        "sampledHeapMaxBytes": 34568352,
+        "heapAfterBytes": {
+          "median": 34314040,
+          "min": 34296080,
+          "max": 34568640
+        },
+        "rssAfterBytes": {
+          "median": 557608960,
+          "min": 557228032,
+          "max": 557703168
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 8.59740000000238,
+          "stagesMs": {
+            "decode": 0.6404999999977008,
+            "parse": 1.1798999999991793,
+            "transform": 2.0627999999996973,
+            "serialize": 1.8788999999997031,
+            "encode": 2.8024999999979627
+          },
+          "outputBytes": 114510,
+          "outputSha256": "6ef3a603e97fe5f869fd0c59e4245f4f75cc57115a0b7293fd64fc30337afd57",
+          "heapBefore": 17229920,
+          "sampledHeapMax": 34568352,
+          "heapAfter": 34568640,
+          "rssAfter": 557608960
+        },
+        {
+          "totalMs": 8.955300000001444,
+          "stagesMs": {
+            "decode": 0.42849999999816646,
+            "parse": 0.9938000000001921,
+            "transform": 2.0120999999999185,
+            "serialize": 1.7242999999980384,
+            "encode": 3.765499999997701
+          },
+          "outputBytes": 114510,
+          "outputSha256": "6ef3a603e97fe5f869fd0c59e4245f4f75cc57115a0b7293fd64fc30337afd57",
+          "heapBefore": 17230400,
+          "sampledHeapMax": 34356232,
+          "heapAfter": 34356520,
+          "rssAfter": 557703168
+        },
+        {
+          "totalMs": 7.022799999998824,
+          "stagesMs": {
+            "decode": 0.20669999999881838,
+            "parse": 1.0617000000020198,
+            "transform": 2.2282999999988533,
+            "serialize": 1.9072000000014668,
+            "encode": 1.5639999999984866
+          },
+          "outputBytes": 114510,
+          "outputSha256": "6ef3a603e97fe5f869fd0c59e4245f4f75cc57115a0b7293fd64fc30337afd57",
+          "heapBefore": 17237976,
+          "sampledHeapMax": 34295792,
+          "heapAfter": 34296080,
+          "rssAfter": 557428736
+        },
+        {
+          "totalMs": 8.405300000002171,
+          "stagesMs": {
+            "decode": 0.22109999999884167,
+            "parse": 1.22099999999773,
+            "transform": 1.9583999999995285,
+            "serialize": 1.7442000000010012,
+            "encode": 3.230200000001787
+          },
+          "outputBytes": 114510,
+          "outputSha256": "6ef3a603e97fe5f869fd0c59e4245f4f75cc57115a0b7293fd64fc30337afd57",
+          "heapBefore": 17251016,
+          "sampledHeapMax": 34313752,
+          "heapAfter": 34314040,
+          "rssAfter": 557703168
+        },
+        {
+          "totalMs": 6.4848000000019965,
+          "stagesMs": {
+            "decode": 0.20760000000154832,
+            "parse": 1.0056000000004133,
+            "transform": 1.8735000000015134,
+            "serialize": 1.812099999999191,
+            "encode": 1.5632000000005064
+          },
+          "outputBytes": 114510,
+          "outputSha256": "6ef3a603e97fe5f869fd0c59e4245f4f75cc57115a0b7293fd64fc30337afd57",
+          "heapBefore": 17243256,
+          "sampledHeapMax": 34306672,
+          "heapAfter": 34306960,
+          "rssAfter": 557228032
+        }
+      ]
+    },
+    {
+      "id": "workflow-ass-chinese-1000",
+      "cueCount": 1000,
+      "fileCount": 1,
+      "mode": "source-chinese",
+      "variant": "ass",
+      "inputBytesPerFile": 98165,
+      "inputBytes": 98165,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 8.489700000001903,
+        "min": 8.039700000001176,
+        "max": 9.4204000000027
+      },
+      "stagesMs": null,
+      "outputBytes": 98165,
+      "outputSha256": "f858a0f456a31a6a51fb1237f6f2a43e8814e0034562f7965165861d1368eca4",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 39109088,
+          "min": 39092184,
+          "max": 39134088
+        },
+        "sampledHeapMaxBytes": 39134088,
+        "heapAfterBytes": {
+          "median": 52745472,
+          "min": 52619936,
+          "max": 53314912
+        },
+        "rssAfterBytes": {
+          "median": 556847104,
+          "min": 556408832,
+          "max": 557830144
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 9.4204000000027,
+          "stagesMs": {
+            "decode": 0,
+            "parse": 0,
+            "transform": 0,
+            "serialize": 0,
+            "encode": 0
+          },
+          "outputBytes": 98165,
+          "outputSha256": "f858a0f456a31a6a51fb1237f6f2a43e8814e0034562f7965165861d1368eca4",
+          "heapBefore": 39092184,
+          "sampledHeapMax": 39092184,
+          "heapAfter": 53300488,
+          "rssAfter": 557240320
+        },
+        {
+          "totalMs": 8.868500000000495,
+          "stagesMs": {
+            "decode": 0,
+            "parse": 0,
+            "transform": 0,
+            "serialize": 0,
+            "encode": 0
+          },
+          "outputBytes": 98165,
+          "outputSha256": "f858a0f456a31a6a51fb1237f6f2a43e8814e0034562f7965165861d1368eca4",
+          "heapBefore": 39108880,
+          "sampledHeapMax": 39108880,
+          "heapAfter": 53314912,
+          "rssAfter": 557830144
+        },
+        {
+          "totalMs": 8.19119999999748,
+          "stagesMs": {
+            "decode": 0,
+            "parse": 0,
+            "transform": 0,
+            "serialize": 0,
+            "encode": 0
+          },
+          "outputBytes": 98165,
+          "outputSha256": "f858a0f456a31a6a51fb1237f6f2a43e8814e0034562f7965165861d1368eca4",
+          "heapBefore": 39109088,
+          "sampledHeapMax": 39109088,
+          "heapAfter": 52745472,
+          "rssAfter": 556503040
+        },
+        {
+          "totalMs": 8.489700000001903,
+          "stagesMs": {
+            "decode": 0,
+            "parse": 0,
+            "transform": 0,
+            "serialize": 0,
+            "encode": 0
+          },
+          "outputBytes": 98165,
+          "outputSha256": "f858a0f456a31a6a51fb1237f6f2a43e8814e0034562f7965165861d1368eca4",
+          "heapBefore": 39119576,
+          "sampledHeapMax": 39119576,
+          "heapAfter": 52724280,
+          "rssAfter": 556408832
+        },
+        {
+          "totalMs": 8.039700000001176,
+          "stagesMs": {
+            "decode": 0,
+            "parse": 0,
+            "transform": 0,
+            "serialize": 0,
+            "encode": 0
+          },
+          "outputBytes": 98165,
+          "outputSha256": "f858a0f456a31a6a51fb1237f6f2a43e8814e0034562f7965165861d1368eca4",
+          "heapBefore": 39134088,
+          "sampledHeapMax": 39134088,
+          "heapAfter": 52619936,
+          "rssAfter": 556847104
+        }
+      ]
+    },
+    {
+      "id": "single-wrap-long-line",
+      "cueCount": 1,
+      "fileCount": 1,
+      "mode": "single-wrap",
+      "variant": "long-line",
+      "inputBytesPerFile": 360481,
+      "inputBytes": 360481,
+      "runs": 5,
+      "warmups": 1,
+      "totalMs": {
+        "median": 7.853500000001077,
+        "min": 7.816800000000512,
+        "max": 8.22479999999996
+      },
+      "stagesMs": {
+        "decode": {
+          "median": 0.42780000000129803,
+          "min": 0.3977000000013504,
+          "max": 0.46459999999933643
+        },
+        "parse": {
+          "median": 0.17840000000069267,
+          "min": 0.17439999999987776,
+          "max": 0.19509999999718275
+        },
+        "transform": {
+          "median": 4.738100000002305,
+          "min": 4.6313999999983935,
+          "max": 4.961600000002363
+        },
+        "serialize": {
+          "median": 1.5084999999999127,
+          "min": 1.4848000000019965,
+          "max": 1.573899999999412
+        },
+        "encode": {
+          "median": 1.0407999999988533,
+          "min": 1.0095000000001164,
+          "max": 1.1173000000017055
+        }
+      },
+      "outputBytes": 371403,
+      "outputSha256": "b88e948899c8d1446984b8d51b0b62490a7e47fb3a1e7b111671ac09ac15e68e",
+      "memory": {
+        "kind": "node-stage-boundary-samples-not-true-peak",
+        "heapBeforeBytes": {
+          "median": 39153880,
+          "min": 39143272,
+          "max": 39154664
+        },
+        "sampledHeapMaxBytes": 54637288,
+        "heapAfterBytes": {
+          "median": 54636832,
+          "min": 54635704,
+          "max": 54637616
+        },
+        "rssAfterBytes": {
+          "median": 563625984,
+          "min": 563036160,
+          "max": 563630080
+        }
+      },
+      "samples": [
+        {
+          "totalMs": 8.03349999999773,
+          "stagesMs": {
+            "decode": 0.42780000000129803,
+            "parse": 0.19509999999718275,
+            "transform": 4.76510000000053,
+            "serialize": 1.573899999999412,
+            "encode": 1.0447000000021944
+          },
+          "outputBytes": 371403,
+          "outputSha256": "b88e948899c8d1446984b8d51b0b62490a7e47fb3a1e7b111671ac09ac15e68e",
+          "heapBefore": 39143272,
+          "sampledHeapMax": 54635376,
+          "heapAfter": 54635704,
+          "rssAfter": 563036160
+        },
+        {
+          "totalMs": 7.816800000000512,
+          "stagesMs": {
+            "decode": 0.46459999999933643,
+            "parse": 0.17669999999998254,
+            "transform": 4.6313999999983935,
+            "serialize": 1.4848000000019965,
+            "encode": 1.0407999999988533
+          },
+          "outputBytes": 371403,
+          "outputSha256": "b88e948899c8d1446984b8d51b0b62490a7e47fb3a1e7b111671ac09ac15e68e",
+          "heapBefore": 39153488,
+          "sampledHeapMax": 54636112,
+          "heapAfter": 54636440,
+          "rssAfter": 563564544
+        },
+        {
+          "totalMs": 7.853500000001077,
+          "stagesMs": {
+            "decode": 0.3977000000013504,
+            "parse": 0.17840000000069267,
+            "transform": 4.738100000002305,
+            "serialize": 1.5023000000001048,
+            "encode": 1.0106999999989057
+          },
+          "outputBytes": 371403,
+          "outputSha256": "b88e948899c8d1446984b8d51b0b62490a7e47fb3a1e7b111671ac09ac15e68e",
+          "heapBefore": 39153880,
+          "sampledHeapMax": 54636504,
+          "heapAfter": 54636832,
+          "rssAfter": 563625984
+        },
+        {
+          "totalMs": 7.821199999998498,
+          "stagesMs": {
+            "decode": 0.4518000000025495,
+            "parse": 0.17439999999987776,
+            "transform": 4.650700000001962,
+            "serialize": 1.5084999999999127,
+            "encode": 1.0095000000001164
+          },
+          "outputBytes": 371403,
+          "outputSha256": "b88e948899c8d1446984b8d51b0b62490a7e47fb3a1e7b111671ac09ac15e68e",
+          "heapBefore": 39154272,
+          "sampledHeapMax": 54636896,
+          "heapAfter": 54637224,
+          "rssAfter": 563625984
+        },
+        {
+          "totalMs": 8.22479999999996,
+          "stagesMs": {
+            "decode": 0.4062999999987369,
+            "parse": 0.17970000000059372,
+            "transform": 4.961600000002363,
+            "serialize": 1.5290999999997439,
+            "encode": 1.1173000000017055
+          },
+          "outputBytes": 371403,
+          "outputSha256": "b88e948899c8d1446984b8d51b0b62490a7e47fb3a1e7b111671ac09ac15e68e",
+          "heapBefore": 39154664,
+          "sampledHeapMax": 54637288,
+          "heapAfter": 54637616,
+          "rssAfter": 563630080
+        }
+      ]
+    }
+  ],
+  "ioMeasurements": [
+    {
+      "cueCount": 100,
+      "inputBytes": 12809,
+      "warmups": 1,
+      "runs": 5,
+      "readMs": {
+        "median": 0.4102999999995518,
+        "min": 0.35640000000057626,
+        "max": 0.4710000000013679
+      },
+      "writeAndSyncMs": {
+        "median": 0.8264000000017404,
+        "min": 0.7746999999981199,
+        "max": 0.926499999997759
+      },
+      "samples": [
+        {
+          "readMs": 0.35640000000057626,
+          "writeAndSyncMs": 0.8634000000020023
+        },
+        {
+          "readMs": 0.42290000000139116,
+          "writeAndSyncMs": 0.7885999999998603
+        },
+        {
+          "readMs": 0.4710000000013679,
+          "writeAndSyncMs": 0.926499999997759
+        },
+        {
+          "readMs": 0.4102999999995518,
+          "writeAndSyncMs": 0.8264000000017404
+        },
+        {
+          "readMs": 0.3642999999974563,
+          "writeAndSyncMs": 0.7746999999981199
+        }
+      ]
+    },
+    {
+      "cueCount": 1000,
+      "inputBytes": 130567,
+      "warmups": 1,
+      "runs": 5,
+      "readMs": {
+        "median": 0.36379999999917345,
+        "min": 0.2628000000004249,
+        "max": 0.44759999999951106
+      },
+      "writeAndSyncMs": {
+        "median": 0.8738000000012107,
+        "min": 0.8026000000027125,
+        "max": 1.1687999999994645
+      },
+      "samples": [
+        {
+          "readMs": 0.29460000000108266,
+          "writeAndSyncMs": 0.8026000000027125
+        },
+        {
+          "readMs": 0.2628000000004249,
+          "writeAndSyncMs": 1.1687999999994645
+        },
+        {
+          "readMs": 0.3676999999988766,
+          "writeAndSyncMs": 1.1418000000012398
+        },
+        {
+          "readMs": 0.44759999999951106,
+          "writeAndSyncMs": 0.8738000000012107
+        },
+        {
+          "readMs": 0.36379999999917345,
+          "writeAndSyncMs": 0.8310999999994237
+        }
+      ]
+    },
+    {
+      "cueCount": 10000,
+      "inputBytes": 1325642,
+      "warmups": 1,
+      "runs": 5,
+      "readMs": {
+        "median": 0.6530999999995402,
+        "min": 0.5761999999995169,
+        "max": 0.6922000000013213
+      },
+      "writeAndSyncMs": {
+        "median": 1.6499999999978172,
+        "min": 1.5481999999974505,
+        "max": 1.7056000000011409
+      },
+      "samples": [
+        {
+          "readMs": 0.6922000000013213,
+          "writeAndSyncMs": 1.667700000001787
+        },
+        {
+          "readMs": 0.6530999999995402,
+          "writeAndSyncMs": 1.6499999999978172
+        },
+        {
+          "readMs": 0.6864000000023225,
+          "writeAndSyncMs": 1.6284000000014203
+        },
+        {
+          "readMs": 0.5800000000017462,
+          "writeAndSyncMs": 1.5481999999974505
+        },
+        {
+          "readMs": 0.5761999999995169,
+          "writeAndSyncMs": 1.7056000000011409
+        }
+      ]
+    },
+    {
+      "cueCount": 50000,
+      "inputBytes": 6715220,
+      "warmups": 1,
+      "runs": 5,
+      "readMs": {
+        "median": 2.0881999999983236,
+        "min": 1.8670000000020082,
+        "max": 2.145700000000943
+      },
+      "writeAndSyncMs": {
+        "median": 4.163800000002084,
+        "min": 4.116099999999278,
+        "max": 4.52560000000085
+      },
+      "samples": [
+        {
+          "readMs": 2.0881999999983236,
+          "writeAndSyncMs": 4.52560000000085
+        },
+        {
+          "readMs": 2.1022999999986496,
+          "writeAndSyncMs": 4.127199999998993
+        },
+        {
+          "readMs": 1.9200000000018917,
+          "writeAndSyncMs": 4.163800000002084
+        },
+        {
+          "readMs": 1.8670000000020082,
+          "writeAndSyncMs": 4.116099999999278
+        },
+        {
+          "readMs": 2.145700000000943,
+          "writeAndSyncMs": 4.302299999999377
+        }
+      ]
+    }
+  ]
+}

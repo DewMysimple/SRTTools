@@ -1,5 +1,5 @@
 import type { ParseDiagnostic, SubtitleDocument } from '../core';
-import type { ImportedFile } from './file-service';
+import { MAX_IMPORT_FILES, MAX_IMPORT_TOTAL_BYTES, type ImportedFile } from './file-service';
 import { workflowDefinitionSchema, type WorkflowDefinition, type WorkflowStepProgress, type WorkflowStepSummary } from '../core/workflow';
 
 export const MAX_WORKER_DURATION_MS = 60_000;
@@ -106,6 +106,9 @@ async function processQueue(
   onProgress: ((task: ProcessedTask) => void) | undefined, signal: AbortSignal | undefined,
   runRequest: RequestRunner, workflow?: WorkflowDefinition,
 ): Promise<ProcessedTask[]> {
+    if (files.length > MAX_IMPORT_FILES || files.reduce((total, file) => total + file.bytes.byteLength, 0) > MAX_IMPORT_TOTAL_BYTES) {
+      throw new Error('处理队列最多 100 个文件、总计 128 MiB，请分批处理。');
+    }
     const tasks = files.map(initialTask);
     const jobOptions = options.fileIndexes ? options : {
       ...options, fileIndexes: Object.fromEntries(files.map((file, index) => [file.id, index + 1])),
