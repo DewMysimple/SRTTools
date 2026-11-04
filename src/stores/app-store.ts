@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ImportedFile } from '../services/file-service';
+import { nativePathKey } from '../services/file-service';
 import { defaultSettings, loadSettings, saveSettings, type AppSettings } from '../services/settings-service';
 import { loadHistory, type HistoryRecord } from '../services/history-service';
 
@@ -28,7 +29,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const existing = get().files;
     const all = [...existing];
     for (const file of incoming) {
-      if (file.path && all.some(f => f.path === file.path)) continue;
+      if (file.path && all.some(f => f.path && nativePathKey(f.path) === nativePathKey(file.path!))) continue;
       if (all.length >= 100 || all.reduce((n, f) => n + f.bytes.byteLength, 0) + file.bytes.byteLength > 128 * 1024 * 1024) { get().notify('当前队列最多 100 个文件、总计 128 MB，请分批处理。', 'error'); break; }
       all.push(file);
     }

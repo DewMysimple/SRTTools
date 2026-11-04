@@ -87,6 +87,13 @@ svg { flex-shrink: 0; }
 .compact h2 { font-size: 14px; }
 .compact .button { margin: 0 0 0 auto; }
 .compact .supported-formats { margin: 0; width: 100%; padding-left: 55px; font-size: 11px; }
+.folder-import { width: 100%; margin-top: 12px; text-align: left; }
+.folder-import-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.folder-import-controls .button, .compact .folder-import-controls .button { margin: 0; }
+.folder-import-controls select { width: auto; max-width: 175px; font-size: 12px; }
+.folder-import-controls .check-label { font-size: 12px; }
+.folder-import-status { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.folder-import-status strong { display: flex; align-items: center; gap: 6px; color: var(--text); }
 .home-tools { margin-top: 29px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .section-heading h2 { font-size: 15px; }

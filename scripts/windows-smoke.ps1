@@ -1,7 +1,9 @@
 ﻿param(
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
-  [string] $ExpectedVersion
+  [string] $ExpectedVersion,
+  [ValidateSet('smoke', 'features', 'folder')][string] $Scenario = 'smoke',
+  [string] $NsisPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,6 +13,8 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
   $arguments = @('-NoLogo', '-NoProfile', '-STA', '-File', $PSCommandPath,
     '-ExePath', $ExePath, '-ReportPath', $ReportPath)
   if ($ExpectedVersion) { $arguments += @('-ExpectedVersion', $ExpectedVersion) }
+  $arguments += @('-Scenario', $Scenario)
+  if ($NsisPath) { $arguments += @('-NsisPath', $NsisPath) }
   & (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') @arguments
   exit $LASTEXITCODE
 }
@@ -63,7 +67,7 @@ public static class SubtitleSmokeNative {
    if (name.ToString() == "Edit") {
     for (IntPtr ancestor = handle; ancestor != IntPtr.Zero && ancestor != dialog; ancestor = GetParent(ancestor)) {
      int id = GetDlgCtrlID(ancestor);
-     if (id == 1148 || id == 1001) { editor = handle; return false; }
+     if (id == 1148 || id == 1001 || id == 1152) { editor = handle; return false; }
     }
    }
    return true;
@@ -72,6 +76,23 @@ public static class SubtitleSmokeNative {
   SendMessage(editor, 0x000C, IntPtr.Zero, path);
   DialogCommand(dialog, 1);
   return true;
+ }
+ public static bool ConfirmCurrentFolder(IntPtr dialog) {
+  IntPtr editor = IntPtr.Zero;
+  EnumChildWindows(dialog, delegate(IntPtr handle, IntPtr parameter) {
+   var name = new System.Text.StringBuilder(256);
+   GetClassName(handle, name, name.Capacity);
+   if (name.ToString() == "Edit") {
+    for (IntPtr ancestor = handle; ancestor != IntPtr.Zero && ancestor != dialog; ancestor = GetParent(ancestor)) {
+     if (GetDlgCtrlID(ancestor) == 1152) { editor = handle; return false; }
+    }
+   }
+   return true;
+  }, IntPtr.Zero);
+  if (editor == IntPtr.Zero) return false;
+  // The caller verifies the actual native address before selecting this folder.
+  SendMessage(editor, 0x000C, IntPtr.Zero, "");
+  return PostMessage(dialog, 0x0111, new IntPtr(1), GetDlgItem(dialog, 1));
  }
  public static string[] WindowStates(uint processId) {
   var windows = new System.Collections.Generic.List<string>();
@@ -121,8 +142,20 @@ $report = [ordered]@{
   failureStage = $null
   failureKind = $null
   failureReason = $null
+  failureLocation = $null
   windowStates = @()
   lastControl = $null
+  scenario = $Scenario
+  sourceSha = $null
+  sourceDirty = $null
+  executableName = $null
+  applicationVersion = $null
+  nsisSha256 = $null
+  environment = [ordered]@{
+    osVersion = [Environment]::OSVersion.Version.ToString()
+    architecture = $env:PROCESSOR_ARCHITECTURE
+    framework = [Environment]::Version.ToString()
+  }
 }
 
 function Assert-Condition($Condition, [string] $Message) {
@@ -190,6 +223,28 @@ function Select-DialogPath([string] $Title, [string] $Path) {
   Wait-DialogClosed
 }
 
+function Get-ApplicationWindow($TestProcess) {
+  $window = Wait-Condition {
+    $TestProcess.Refresh()
+    if ($TestProcess.HasExited) { throw 'Application exited before startup.' }
+    $found = $desktop.FindFirst($scope::Children, (New-Object System.Windows.Automation.AndCondition(
+      (Condition $element::ProcessIdProperty $TestProcess.Id),
+      (Condition $element::ClassNameProperty 'Tauri Window'))))
+    if ($found) { $found }
+  } 'Application window was not available.'
+  $handle = [IntPtr]::new($window.Current.NativeWindowHandle)
+  [void][SubtitleSmokeNative]::ShowWindow($handle, 9)
+  [void][SubtitleSmokeNative]::ShowWindow($handle, 5)
+  Wait-Condition {
+    [SubtitleSmokeNative]::IsWindowVisible($handle) -and ![SubtitleSmokeNative]::IsIconic($handle)
+  } 'The test application window could not be shown.' | Out-Null
+  [SubtitleSmokeNative]::ActivateAccessibility($handle)
+  Wait-Condition {
+    $window.FindFirst($scope::Descendants, (Condition $element::NameProperty '让字幕处理，简单一点。'))
+  } 'Application home was not available.' | Out-Null
+  $window
+}
+
 function Write-Synced([string] $Path, [byte[]] $Bytes, [IO.FileMode] $Mode = [IO.FileMode]::Create) {
   $stream = [IO.File]::Open($Path, $Mode, [IO.FileAccess]::Write, [IO.FileShare]::None)
   try { $stream.Write($Bytes, 0, $Bytes.Length); $stream.Flush($true) }
@@ -228,6 +283,11 @@ try {
   $exe = Get-Item -LiteralPath $ExePath
   Assert-Condition (!$exe.PSIsContainer -and $exe.Length -gt 0 -and $exe.Extension -eq '.exe') 'Executable was not valid.'
   $report.executableSha256 = (Get-FileHash -LiteralPath $ExePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $report.executableName = $exe.Name
+  $report.applicationVersion = $exe.VersionInfo.ProductVersion
+  if ($NsisPath) {
+    $report.nsisSha256 = (Get-FileHash -LiteralPath $NsisPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
   if (Test-Path -LiteralPath $ReportPath) {
     $previousReport = [IO.File]::ReadAllText($ReportPath) | ConvertFrom-Json
     Assert-Condition ($previousReport.producer -eq $report.producer) 'Refusing to overwrite an unknown report file.'
@@ -238,6 +298,8 @@ try {
   Assert-Condition (!(Get-Process -Name 'subtitle-tools' -ErrorAction SilentlyContinue)) 'Close the existing Subtitle Tools session before native smoke verification.'
 
   $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+  $report.sourceSha = (& git -C $repository rev-parse HEAD).Trim()
+  $report.sourceDirty = [bool](& git -C $repository status --porcelain)
   $target = Join-Path $repository 'src-tauri\target'
   foreach ($directory in @($repository, (Join-Path $repository 'src-tauri'), $target)) {
     if (Test-Path -LiteralPath $directory) {
@@ -277,28 +339,26 @@ try {
 
   $stage = 'startup'
   $process = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru
-  $application = Wait-Condition {
-    $process.Refresh()
-    if ($process.HasExited) { throw 'Application exited before startup.' }
-    $window = $desktop.FindFirst($scope::Children, (New-Object System.Windows.Automation.AndCondition(
-      (Condition $element::ProcessIdProperty $process.Id),
-      (Condition $element::ClassNameProperty 'Tauri Window'))))
-    if ($window) { $window }
-  } 'Application window was not available.'
+  $application = Get-ApplicationWindow $process
   $applicationHandle = [IntPtr]::new($application.Current.NativeWindowHandle)
-  [void][SubtitleSmokeNative]::ShowWindow($applicationHandle, 9)
-  [void][SubtitleSmokeNative]::ShowWindow($applicationHandle, 5)
-  Wait-Condition {
-    [SubtitleSmokeNative]::IsWindowVisible($applicationHandle) -and
-      ![SubtitleSmokeNative]::IsIconic($applicationHandle)
-  } 'The test application window could not be shown.' | Out-Null
-  [SubtitleSmokeNative]::ActivateAccessibility($applicationHandle)
+  $webViewProcess = Get-CimInstance Win32_Process -Filter "name='msedgewebview2.exe'" |
+    Where-Object { $_.ParentProcessId -eq $process.Id } | Select-Object -First 1
+  if ($webViewProcess -and $webViewProcess.ExecutablePath) {
+    $report.environment.webViewVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($webViewProcess.ExecutablePath).ProductVersion
+  }
+  $windowsVersion = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+  $report.environment.windowsBuild = $windowsVersion.CurrentBuildNumber + '.' + $windowsVersion.UBR
   [void](Get-Control '让字幕处理，简单一点。')
   if ($ExpectedVersion) {
     Wait-Condition { (Find-Control $ExpectedVersion $types::Text) -or (Find-Control ("v" + $ExpectedVersion) $types::Text) } 'Application version did not match.' | Out-Null
   }
   $report.checks.startup = $true
 
+  if ($Scenario -eq 'features') {
+    . (Join-Path $PSScriptRoot 'windows-feature-steps.ps1')
+  } elseif ($Scenario -eq 'folder') {
+    . (Join-Path $PSScriptRoot 'windows-folder-steps.ps1')
+  } else {
   $stage = 'import'
   Click-Control '选择文件'
   Select-DialogPath '选择字幕文件' $source
@@ -322,9 +382,14 @@ try {
   Assert-Condition ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -eq $sourceHash) 'Original subtitle changed.'
   $report.originalPreserved = $true
   $report.checks.export = $true
+  }
 } catch {
   $report.failureStage = $stage
   $report.failureKind = $_.Exception.GetBaseException().GetType().Name
+  $report.failureLocation = [ordered]@{
+    script = [IO.Path]::GetFileName($_.InvocationInfo.ScriptName)
+    line = $_.InvocationInfo.ScriptLineNumber
+  }
   $reason = $_.Exception.Message
   if ($reason -match '(?i)([a-z]:[\\/]|\\\\)') {
     $reason = 'A native operation failed. Inspect failureStage and failureKind.'

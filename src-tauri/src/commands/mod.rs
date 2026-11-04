@@ -1,4 +1,6 @@
 mod safe_files;
+pub mod folder_import;
+pub use folder_import::FolderImports;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -48,6 +50,15 @@ struct Grants {
 pub struct FileAccess(Mutex<Grants>);
 
 impl FileAccess {
+    fn approve_folder_file(&self, path: PathBuf) -> io::Result<()> {
+        self.0
+            .lock()
+            .map_err(|_| io::Error::other("文件授权状态异常。"))?
+            .imports
+            .insert(path);
+        Ok(())
+    }
+
     pub fn approve_dropped(&self, paths: &[PathBuf]) {
         if let Ok(mut grants) = self.0.lock() {
             for path in paths {

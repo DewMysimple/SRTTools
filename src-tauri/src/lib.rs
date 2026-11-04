@@ -6,6 +6,7 @@ use tauri::{DragDropEvent, Emitter, Manager, WindowEvent};
 pub fn run() {
     tauri::Builder::default()
         .manage(commands::FileAccess::default())
+        .manage(commands::FolderImports::default())
         .plugin(tauri_plugin_dialog::init())
         // Store remains Rust-only. No general-purpose filesystem or store IPC is exposed.
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -31,6 +32,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::select_files,
+            commands::folder_import::select_import_folder,
+            commands::folder_import::cancel_folder_import,
             commands::read_dropped_files,
             commands::select_directory,
             commands::save_output,

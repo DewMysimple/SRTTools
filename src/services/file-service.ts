@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 
 export interface ImportedFile {
   id: string;
@@ -18,9 +18,89 @@ interface NativeImportedFile {
 }
 
 const extensions = new Set(['srt', 'vtt', 'ass', 'ssa', 'txt', 'csv']);
+export const SUBTITLE_EXTENSIONS = [...extensions];
 export const MAX_IMPORT_BYTES = 32 * 1024 * 1024;
 export const MAX_IMPORT_TOTAL_BYTES = 128 * 1024 * 1024;
 export const MAX_IMPORT_FILES = 100;
+
+/** Native canonical paths retain their actual Unicode spelling; do not normalize distinct filenames. */
+export function nativePathKey(path: string): string {
+  // Native file handles already supply the filesystem's actual Unicode spelling.
+  // JavaScript Unicode case conversion can expand names (İ → i + combining dot),
+  // unlike Windows ordinal comparison, and would silently discard a different file.
+  return path.replace(/^\\\\\?\\UNC\\/iu, '\\\\').replace(/^\\\\\?\\/u, '').replace(/\//gu, '\\')
+    .replace(/[A-Z]/gu, character => character.toLowerCase());
+}
+
+export interface FolderImportSummary {
+  selected: boolean;
+  visitedEntries: number;
+  scannedFiles: number;
+  added: number;
+  duplicates: number;
+  unsupported: number;
+  overLimit: number;
+  failed: number;
+  unreadableDirectories: number;
+  skippedLinks: number;
+  depthSkipped: number;
+  cancelledFiles: number;
+  limitStopped: boolean;
+  cancelled: boolean;
+}
+
+interface FolderImportEvent {
+  scanId: string;
+  phase: 'scanning' | 'reading' | 'complete';
+  summary: FolderImportSummary;
+  file?: NativeImportedFile;
+}
+
+export async function importFolder(options: {
+  recursive: boolean;
+  extensions: string[];
+  existingFiles: readonly ImportedFile[];
+  signal: AbortSignal;
+  onFile: (file: ImportedFile) => void;
+  onProgress: (summary: FolderImportSummary, phase: FolderImportEvent['phase']) => void;
+}): Promise<FolderImportSummary> {
+  if (!isDesktop()) throw new Error('添加文件夹仅在 Windows 桌面版可用。');
+  if (options.signal.aborted) throw new DOMException('已取消文件夹导入。', 'AbortError');
+  const scanId = crypto.randomUUID();
+  let complete: (summary: FolderImportSummary) => void = () => undefined;
+  const terminal = new Promise<FolderImportSummary>(resolve => { complete = resolve; });
+  let finished = false;
+  let cancellationError: Error | undefined;
+  const cancel = () => {
+    void nativeInvoke<void>('cancel_folder_import', { scanId }).catch(error => { cancellationError = readableError(error); });
+  };
+  const onEvent = new Channel<FolderImportEvent>(event => {
+    if (finished || event.scanId !== scanId) return;
+    if (event.file) options.onFile(fromNative(event.file));
+    options.onProgress(event.summary, event.phase);
+    if (event.phase === 'complete') complete(event.summary);
+  });
+  options.signal.addEventListener('abort', cancel, { once: true });
+  try {
+    const [, summary] = await Promise.all([
+      nativeInvoke<void>('select_import_folder', {
+        scanId, recursive: options.recursive, extensions: options.extensions,
+        existingPaths: options.existingFiles.flatMap(file => file.path ? [file.path] : []),
+        existingCount: options.existingFiles.length,
+        existingBytes: options.existingFiles.reduce((size, file) => size + file.bytes.byteLength, 0),
+        onEvent,
+      }),
+      // Channel delivery can lag behind the command response. Keep the queue locked until terminal consumption.
+      terminal,
+    ]);
+    if (cancellationError && !summary.cancelled) throw new Error(`取消请求失败，扫描已结束：${cancellationError.message}`);
+    return summary;
+  } finally {
+    finished = true;
+    options.signal.removeEventListener('abort', cancel);
+    onEvent.onmessage = () => undefined;
+  }
+}
 
 export function isDesktop(): boolean {
   return isTauri();

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AlertCircle, CheckCircle2, Info, X, LoaderCircle, FileText, ArrowUp, ArrowDown, Trash2, Upload, Plus, FolderOpen, ShieldCheck } from 'lucide-react';
 import { useAppStore } from '../stores/app-store';
 import { isDesktop, pickFiles, readBrowserFiles, subscribeFileDrop, openOutputDirectory } from '../services/file-service';
+import { FolderImport } from './folder-import';
 
 export const errorText = (error: unknown): string => error instanceof Error ? error.message : String(error);
 export function formatSize(n: number): string { return n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 ** 2).toFixed(1)} MB`; }
@@ -28,7 +29,7 @@ export function FileSelector({ compact = false }: { compact?: boolean }) {
   return <div className={`dropzone ${compact ? 'compact' : ''} ${dragging ? 'dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={async event => {
     event.preventDefault(); setDragging(false); if (busy || isDesktop()) return;
     try { const imported = await readBrowserFiles(event.dataTransfer.files); if (useAppStore.getState().busy) notify('当前处理尚未完成，请完成后重新添加文件。'); else addFiles(imported); } catch (error) { notify(errorText(error), 'error'); }
-  }}><div className="upload-mark"><Upload size={compact ? 22 : 30} strokeWidth={1.6} /></div><div className="dropzone-copy"><h2>{compact ? '添加要处理的字幕文件' : '把字幕文件拖到这里'}</h2><p>{compact ? '支持多选，也可以继续拖入文件' : '一次导入一份或多份字幕，所有处理都在本地完成'}</p></div><button className="button primary" disabled={loading || busy} onClick={() => void choose()}>{loading ? <BusyLabel>读取中</BusyLabel> : <><Plus size={17} />选择文件</>}</button><span className="supported-formats">SRT · VTT · ASS · SSA · CSV · 带时间的 TXT</span>{!compact && <span className="dropzone-privacy"><ShieldCheck size={14} /> 本地处理，保护你的内容</span>}</div>;
+  }}><div className="upload-mark"><Upload size={compact ? 22 : 30} strokeWidth={1.6} /></div><div className="dropzone-copy"><h2>{compact ? '添加要处理的字幕文件' : '把字幕文件拖到这里'}</h2><p>{compact ? '支持多选，也可以继续拖入文件' : '一次导入一份或多份字幕，所有处理都在本地完成'}</p></div><button className="button primary" disabled={loading || busy} onClick={() => void choose()}>{loading ? <BusyLabel>读取中</BusyLabel> : <><Plus size={17} />选择文件</>}</button>{isDesktop() && <FolderImport />}<span className="supported-formats">SRT · VTT · ASS · SSA · CSV · 带时间的 TXT</span>{!compact && <span className="dropzone-privacy"><ShieldCheck size={14} /> 本地处理，保护你的内容</span>}</div>;
 }
 export function NativeDropHandler() {
   const addFiles = useAppStore(s => s.addFiles); const notify = useAppStore(s => s.notify);
