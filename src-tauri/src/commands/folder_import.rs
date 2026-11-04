@@ -69,7 +69,7 @@ impl Drop for Session {
     }
 }
 
-fn valid_id(id: &str) -> bool {
+pub(super) fn valid_id(id: &str) -> bool {
     id.len() == 36
         && id.bytes().enumerate().all(|(index, character)| {
             if [8, 13, 18, 23].contains(&index) {
@@ -167,7 +167,7 @@ impl ScanOptions {
 }
 
 #[cfg(windows)]
-fn ordinal_compare(left: &OsStr, right: &OsStr, ignore_case: bool) -> Ordering {
+pub(super) fn ordinal_compare(left: &OsStr, right: &OsStr, ignore_case: bool) -> Ordering {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Globalization::{CompareStringOrdinal, CSTR_EQUAL, CSTR_LESS_THAN};
     let left: Vec<_> = left.encode_wide().collect();
@@ -189,7 +189,7 @@ fn ordinal_compare(left: &OsStr, right: &OsStr, ignore_case: bool) -> Ordering {
 }
 
 #[cfg(not(windows))]
-fn ordinal_compare(left: &OsStr, right: &OsStr, ignore_case: bool) -> Ordering {
+pub(super) fn ordinal_compare(left: &OsStr, right: &OsStr, ignore_case: bool) -> Ordering {
     if ignore_case {
         left.to_string_lossy()
             .to_lowercase()
@@ -199,7 +199,7 @@ fn ordinal_compare(left: &OsStr, right: &OsStr, ignore_case: bool) -> Ordering {
     }
 }
 
-fn within(root: &Path, candidate: &Path) -> bool {
+pub(super) fn within(root: &Path, candidate: &Path) -> bool {
     let mut children = candidate.components();
     root.components().all(|component| {
         children.next().is_some_and(|child| {
@@ -220,14 +220,14 @@ fn is_reparse(metadata: &fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
-struct LockedEntry {
-    file: File,
-    final_path: PathBuf,
-    metadata: fs::Metadata,
+pub(super) struct LockedEntry {
+    pub(super) file: File,
+    pub(super) final_path: PathBuf,
+    pub(super) metadata: fs::Metadata,
 }
 
 #[derive(Debug)]
-enum OpenFailure {
+pub(super) enum OpenFailure {
     Unsafe,
     Io(io::Error),
 }
@@ -264,19 +264,24 @@ fn final_path(file: &File) -> io::Result<PathBuf> {
 }
 
 #[cfg(windows)]
-fn locked_open(
+fn locked_open_mode(
     path: &Path,
     root: Option<&Path>,
     directory: bool,
+    output: bool,
 ) -> Result<LockedEntry, OpenFailure> {
     use std::os::windows::fs::OpenOptionsExt;
     use windows_sys::Win32::Storage::FileSystem::{
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE,
     };
     let file = fs::OpenOptions::new()
         .read(true)
         // Deny writes and deletion while checking and reading this exact handle.
-        .share_mode(FILE_SHARE_READ)
+        .share_mode(if output {
+            FILE_SHARE_READ | FILE_SHARE_WRITE
+        } else {
+            FILE_SHARE_READ
+        })
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
         .open(path)?;
     let metadata = file.metadata()?;
@@ -298,15 +303,32 @@ fn locked_open(
 }
 
 #[cfg(not(windows))]
-fn locked_open(
+fn locked_open_mode(
     _path: &Path,
     _root: Option<&Path>,
     _directory: bool,
+    _output: bool,
 ) -> Result<LockedEntry, OpenFailure> {
     Err(OpenFailure::Io(io::Error::new(
         io::ErrorKind::Unsupported,
         "文件夹导入需要 Windows 桌面环境。",
     )))
+}
+
+pub(super) fn locked_open(
+    path: &Path,
+    root: Option<&Path>,
+    directory: bool,
+) -> Result<LockedEntry, OpenFailure> {
+    locked_open_mode(path, root, directory, false)
+}
+
+/// Output parents permit child entry publication, while denying deletion/renaming of the parent.
+pub(super) fn locked_output_directory(
+    path: &Path,
+    root: Option<&Path>,
+) -> Result<LockedEntry, OpenFailure> {
+    locked_open_mode(path, root, true, true)
 }
 
 #[derive(Debug)]
@@ -553,14 +575,17 @@ impl<'a> Scanner<'a> {
             self.summary.cancelled_files += 1;
             return;
         }
-        if self
-            .access
-            .approve_folder_file(entry.final_path.clone())
-            .is_err()
-        {
-            self.summary.failed += 1;
-            return;
-        }
+        let folder_source = match self.access.approve_folder_source(
+            entry.final_path.clone(),
+            root,
+            &self.options.scan_id,
+        ) {
+            Ok(source) => source,
+            Err(_) => {
+                self.summary.failed += 1;
+                return;
+            }
+        };
         let size = bytes.len() as u64;
         let file = ImportedFile {
             name: entry
@@ -573,6 +598,7 @@ impl<'a> Scanner<'a> {
             bytes,
             size,
             error: None,
+            folder_source: Some(folder_source),
         };
         self.summary.added += 1;
         self.added_bytes += size;

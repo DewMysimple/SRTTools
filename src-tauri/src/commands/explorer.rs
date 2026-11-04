@@ -183,6 +183,7 @@ fn read_external(path: &Path, remaining: u64, access: &FileAccess) -> Result<Imp
         size: bytes.len() as u64,
         bytes,
         error: None,
+        folder_source: access.folder_source(&canonical),
     })
 }
 

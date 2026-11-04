@@ -1,4 +1,5 @@
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
+import { validatePlannedOutputs, type PlannedOutput } from './export-service';
 
 export interface ImportedFile {
   id: string;
@@ -7,6 +8,14 @@ export interface ImportedFile {
   bytes: Uint8Array;
   size: number;
   error?: string;
+  /** Session-only, native-verified source layout. Never persisted in a preset. */
+  folderSource?: FolderSource;
+}
+
+export interface FolderSource {
+  rootId: string;
+  rootName: string;
+  relativePath: string;
 }
 
 interface NativeImportedFile {
@@ -15,6 +24,7 @@ interface NativeImportedFile {
   bytes: number[];
   size: number;
   error?: string;
+  folderSource?: FolderSource;
 }
 
 const extensions = new Set(['srt', 'vtt', 'ass', 'ssa', 'txt', 'csv']);
@@ -232,6 +242,34 @@ export async function saveOutput(
 export async function pickDirectory(): Promise<string | null> {
   if (!isDesktop()) throw new Error('浏览器预览使用系统下载目录；请在桌面应用中设置输出目录。');
   return nativeInvoke<string | null>('select_directory');
+}
+
+export interface PreparedFolderExport {
+  exportId: string;
+  directory: string;
+  entries: Array<{ id: string; relativePath: string; renamed: boolean; error?: string }>;
+}
+
+/** The returned token authorizes this immutable plan only, until finishFolderExport or app exit. */
+export async function prepareFolderExport(outputs: readonly PlannedOutput[], directory?: string): Promise<PreparedFolderExport | null> {
+  if (!isDesktop()) throw new Error('目录输出仅在桌面版可用；浏览器可导出保留层级的 ZIP。');
+  validatePlannedOutputs(outputs);
+  if (outputs.some(output => !output.sourcePath)) throw new Error('目录输出需要本次已授权的原生输入，请重新导入文件。');
+  return nativeInvoke<PreparedFolderExport | null>('prepare_folder_export', {
+    exportId: crypto.randomUUID(), directory: directory || null,
+    entries: outputs.map(output => ({ id: output.id, relativePath: output.relativePath, sourcePath: output.sourcePath })),
+  });
+}
+
+export async function writeFolderExport(exportId: string, id: string, bytes: Uint8Array): Promise<{ path: string; relativePath: string }> {
+  if (!isDesktop()) throw new Error('目录输出仅在桌面版可用。');
+  return nativeInvoke('write_folder_export', { exportId, id, bytes: Array.from(bytes) });
+}
+
+/** Cancels an in-flight write at a 64 KiB boundary, preserves completed files, releases all handles. */
+export async function finishFolderExport(exportId: string): Promise<void> {
+  if (!isDesktop()) return;
+  await nativeInvoke<void>('finish_folder_export', { exportId });
 }
 
 export async function openOutputDirectory(path: string): Promise<void> {

@@ -19,6 +19,7 @@ pub fn run() {
         .manage(external)
         .manage(commands::FileAccess::default())
         .manage(commands::FolderImports::default())
+        .manage(commands::FolderExports::default())
         .plugin(tauri_plugin_dialog::init())
         // Store remains Rust-only. No general-purpose filesystem or store IPC is exposed.
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -46,6 +47,9 @@ pub fn run() {
             commands::select_files,
             commands::folder_import::select_import_folder,
             commands::folder_import::cancel_folder_import,
+            commands::folder_export::prepare_folder_export,
+            commands::folder_export::write_folder_export,
+            commands::folder_export::finish_folder_export,
             commands::explorer::get_explorer_integration,
             commands::explorer::set_explorer_integration,
             commands::explorer::take_external_imports,
@@ -55,6 +59,9 @@ pub fn run() {
             commands::open_output_directory,
             commands::get_local_value,
             commands::set_local_value,
+            commands::preset_storage::get_preset_values,
+            commands::preset_storage::set_preset_values,
+            commands::preset_storage::read_preset_import_file,
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Subtitle Tools");

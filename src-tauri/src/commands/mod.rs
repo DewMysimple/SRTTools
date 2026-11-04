@@ -1,12 +1,15 @@
 pub mod explorer;
+pub mod folder_export;
 pub mod folder_import;
+pub mod preset_storage;
 mod safe_files;
+pub use folder_export::FolderExports;
 pub use folder_import::FolderImports;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs,
     io::{self, Read, Write},
     path::{Path, PathBuf},
@@ -24,6 +27,8 @@ const STORE_NAME: &str = "subtitle-tools.json";
 const STORE_RECOVERY_NAME: &str = "subtitle-tools-recovery.json";
 const PRESET_KEY: &str = "tool-presets-v1";
 const PRESET_LIMIT: usize = 256 * 1024;
+const WORKFLOW_KEY: &str = "workflow-presets-v1";
+const WORKFLOW_LIMIT: usize = 512 * 1024;
 static STORE_TRANSACTION: Mutex<()> = Mutex::new(());
 
 fn display_path(path: &Path) -> String {
@@ -45,6 +50,8 @@ fn display_path(path: &Path) -> String {
 struct Grants {
     imports: HashSet<PathBuf>,
     directories: HashSet<PathBuf>,
+    folder_roots: HashMap<String, PathBuf>,
+    folder_files: HashMap<PathBuf, FolderSource>,
 }
 
 #[derive(Default)]
@@ -58,6 +65,76 @@ impl FileAccess {
             .imports
             .insert(path);
         Ok(())
+    }
+
+    fn approve_folder_source(
+        &self,
+        path: PathBuf,
+        root: &Path,
+        proposed_root_id: &str,
+    ) -> io::Result<FolderSource> {
+        let mut grants = self
+            .0
+            .lock()
+            .map_err(|_| io::Error::other("文件授权状态异常。"))?;
+        let root_id = grants
+            .folder_roots
+            .iter()
+            .find_map(|(id, known)| {
+                (folder_import::within(known, root) && folder_import::within(root, known))
+                    .then(|| id.clone())
+            })
+            .unwrap_or_else(|| proposed_root_id.to_owned());
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|_| io::Error::other("源文件不在已选择目录中。"))?;
+        let relative_path = relative
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let source = FolderSource {
+            root_id: root_id.clone(),
+            root_name: root
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "字幕目录".into()),
+            relative_path,
+        };
+        grants.folder_roots.insert(root_id, root.to_path_buf());
+        grants.folder_files.insert(path.clone(), source.clone());
+        grants.imports.insert(path);
+        Ok(source)
+    }
+
+    fn folder_source(&self, path: &Path) -> Option<FolderSource> {
+        self.0.lock().ok()?.folder_files.get(path).cloned()
+    }
+
+    /// Look up a renderer path only in concrete native import grants; never read arbitrary hints.
+    fn approved_source_root(&self, source: &str) -> Result<PathBuf, String> {
+        let grants = self.0.lock().map_err(|_| "文件授权状态异常。")?;
+        let path = grants
+            .imports
+            .iter()
+            .find(|path| {
+                folder_import::ordinal_compare(
+                    std::ffi::OsStr::new(&display_path(path)),
+                    std::ffi::OsStr::new(source),
+                    true,
+                ) == std::cmp::Ordering::Equal
+            })
+            .ok_or("目录输出的源文件未经本次原生导入授权，请重新导入。")?;
+        if let Some(source) = grants.folder_files.get(path) {
+            return grants
+                .folder_roots
+                .get(&source.root_id)
+                .cloned()
+                .ok_or_else(|| "源目录会话已失效，请重新导入。".into());
+        }
+        path.parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "源文件目录无效。".into())
     }
 
     pub fn approve_dropped(&self, paths: &[PathBuf]) {
@@ -100,6 +177,14 @@ impl FileAccess {
     }
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderSource {
+    root_id: String,
+    root_name: String,
+    relative_path: String,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportedFile {
@@ -109,6 +194,8 @@ pub struct ImportedFile {
     size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    folder_source: Option<FolderSource>,
 }
 
 fn ensure_main(window: &WebviewWindow) -> Result<(), String> {
@@ -130,6 +217,7 @@ fn import_one(path: &Path, access: &FileAccess, remaining_bytes: u64) -> Importe
         bytes: Vec::new(),
         size: 0,
         error: None,
+        folder_source: None,
     };
     let result = (|| {
         let canonical = fs::canonicalize(path).map_err(|e| format!("无法读取文件：{e}"))?;
@@ -172,6 +260,7 @@ fn import_one(path: &Path, access: &FileAccess, remaining_bytes: u64) -> Importe
             return Err("读取时总内容超过 128 MiB 限制，请分批选择文件。".into());
         }
         file.path = display_path(&canonical);
+        file.folder_source = access.folder_source(&canonical);
         Ok(())
     })();
     if let Err(error) = result {
@@ -423,7 +512,7 @@ fn open_directory(path: &Path) -> std::io::Result<()> {
 }
 
 fn validate_store_key(key: &str) -> Result<(), String> {
-    if ["settings", "history", PRESET_KEY].contains(&key) {
+    if ["settings", "history", PRESET_KEY, WORKFLOW_KEY].contains(&key) {
         Ok(())
     } else {
         Err("无效的本地设置键。".into())
@@ -535,6 +624,9 @@ pub fn set_local_value(
     if key == PRESET_KEY && bytes.len() > PRESET_LIMIT {
         return Err("参数预设过大，请缩短文本或删除不用的预设。".into());
     }
+    if key == WORKFLOW_KEY && bytes.len() > WORKFLOW_LIMIT {
+        return Err("流程预设过大，最多 512 KiB，请缩短文本或删除不用的流程。".into());
+    }
     if bytes.len() > 4 * 1024 * 1024 {
         return Err("本地设置或历史记录过大，请先清理处理记录。".into());
     }
@@ -542,19 +634,23 @@ pub fn set_local_value(
         .lock()
         .map_err(|_| "本地设置正在恢复，请重启应用。")?;
     let (mut values, path) = local_values(&app)?;
-    let previous = values.insert(key.clone(), value);
-    let content = serde_json::to_vec_pretty(&values).map_err(|e| e.to_string())?;
-    match safe_files::replace_local_store(&path, &content) {
-        Ok(()) => clear_store_recovery(&path),
+    let previous = values.clone();
+    values.insert(key, value);
+    commit_local_values(&path, &previous, &values)
+}
+
+fn commit_local_values(
+    path: &Path,
+    previous: &Map<String, Value>,
+    values: &Map<String, Value>,
+) -> Result<(), String> {
+    let content = serde_json::to_vec_pretty(values).map_err(|e| e.to_string())?;
+    match safe_files::replace_local_store(path, &content) {
+        Ok(()) => clear_store_recovery(path),
         Err(error) if supports_store_write_fallback(&error) => {
             // Some Windows encrypted AppData folders reject same-volume renames.
             // Preserve the committed snapshot before writing the fixed file in place.
-            if let Some(value) = previous {
-                values.insert(key, value);
-            } else {
-                values.remove(&key);
-            }
-            write_store_with_recovery(&path, &values, &content)
+            write_store_with_recovery(path, previous, &content)
         }
         Err(error) => Err(error),
     }

@@ -3,7 +3,7 @@ use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -51,8 +51,17 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 }
 
 pub fn write_unique(directory: &Path, name: &str, bytes: &[u8]) -> io::Result<PathBuf> {
+    write_unique_cancellable(directory, name, bytes, None)
+}
+
+pub(super) fn write_unique_cancellable(
+    directory: &Path,
+    name: &str,
+    bytes: &[u8],
+    cancel: Option<&AtomicBool>,
+) -> io::Result<PathBuf> {
     validate_name(name).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    write_staged(directory, bytes, |temporary| {
+    write_staged_cancellable(directory, bytes, cancel, |temporary| {
         let source = Path::new(name);
         let stem = source.file_stem().unwrap_or_default().to_string_lossy();
         let extension = source.extension().unwrap_or_default().to_string_lossy();
@@ -60,8 +69,24 @@ pub fn write_unique(directory: &Path, name: &str, bytes: &[u8]) -> io::Result<Pa
             let target = directory.join(if attempt == 0 {
                 name.to_owned()
             } else {
-                format!("{stem} ({attempt}).{extension}")
+                let suffix = format!(" ({attempt}).{extension}");
+                let mut trimmed = String::new();
+                let mut units = 0;
+                for character in stem.chars() {
+                    if units + character.len_utf16() + suffix.encode_utf16().count() > 220 {
+                        break;
+                    }
+                    trimmed.push(character);
+                    units += character.len_utf16();
+                }
+                format!("{trimmed}{suffix}")
             });
+            if cancel.is_some_and(|cancel| cancel.load(Ordering::Relaxed)) {
+                return Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "目录导出已取消。",
+                ));
+            }
             match publish(temporary, &target, false) {
                 Ok(()) => return Ok(target),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -89,6 +114,15 @@ fn write_staged<T>(
     bytes: &[u8],
     commit: impl FnOnce(&Path) -> io::Result<T>,
 ) -> io::Result<T> {
+    write_staged_cancellable(directory, bytes, None, commit)
+}
+
+fn write_staged_cancellable<T>(
+    directory: &Path,
+    bytes: &[u8],
+    cancel: Option<&AtomicBool>,
+    commit: impl FnOnce(&Path) -> io::Result<T>,
+) -> io::Result<T> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -103,9 +137,23 @@ fn write_staged<T>(
         .create_new(true)
         .open(&temporary)?;
     let result = (|| {
-        file.write_all(bytes)?;
+        for chunk in bytes.chunks(64 * 1024) {
+            if cancel.is_some_and(|cancel| cancel.load(Ordering::Relaxed)) {
+                return Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "目录导出已取消。",
+                ));
+            }
+            file.write_all(chunk)?;
+        }
         file.sync_all()?;
         drop(file);
+        if cancel.is_some_and(|cancel| cancel.load(Ordering::Relaxed)) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "目录导出已取消。",
+            ));
+        }
         commit(&temporary)
     })();
     // Remove a partial temporary file after failure. A published result is never removed.
