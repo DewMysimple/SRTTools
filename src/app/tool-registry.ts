@@ -39,6 +39,9 @@ export const tools: ToolDefinition[] = [
   tool('extract', '文本提取', '导出纯文本，方便阅读和整理文稿', '文本处理', FileText, [check('preserveLines', '保留字幕内的换行', true)], '输出 TXT，不包含时间和编号。'),
   tool('duplicates', '删除重复字幕', '按全部文本或连续重复条目去重', '文本处理', Copy, [select('strategy', '去重范围', [['consecutive', '仅连续重复'], ['all', '全部相同文本']])]),
   tool('punctuation', '标点转换', '在常见中文和英文标点之间转换', '文本处理', Languages, [select('direction', '转换方向', [['zh', '英文标点 → 中文标点'], ['en', '中文标点 → 英文标点']])]),
+  tool('chinese', '简繁转换', '在本机按词组转换简体或繁体字幕正文', '文本处理', Languages, [
+    select('direction', '转换方向', [['s2t', '简体 → 繁体（通用）'], ['t2s', '繁体 → 简体']]),
+  ], '这是字词转换，不等同于翻译；专有名词与歧义词建议人工核对。保留原编号、时间、换行和格式标记。'),
   tool('case', '英文大小写', '将英文转为大写、小写或单词首字母大写', '文本处理', CaseSensitive, [select('mode', '大小写规则', [['lower', '全部小写'], ['upper', '全部大写'], ['title', '单词首字母大写']])]),
   tool('wrap', '自动换行', '按每行字符数重新排列字幕文本', '文本处理', WrapText, [number('maxChars', '每行最多字符', 24, 1, 10_000)], '按 Unicode 字符计数并优先在空格断行；请人工复核语义分句。'),
   tool('strip-html', 'HTML 清理', '移除正文标签并还原常见 HTML 实体', '文本处理', CodeXml),

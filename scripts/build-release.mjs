@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import {
   PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, controlledPath, exists, fileRecords, makeStage,
   promoteRelease, recordPortableInventory, removeTree, run, sha256, validateStage, verifyRelease, walkFiles,
-  withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths,
+  withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths, releaseResources,
 } from './release-common.mjs';
 import { cleanOutputs } from './clean-outputs.mjs';
 
@@ -37,10 +37,8 @@ async function preflight() {
   if (path.resolve(target).toLowerCase() !== path.join(root, 'src-tauri/target').toLowerCase()) {
     throw new Error('Release scripts require the project-local src-tauri/target. Shared or alternate Cargo target directories are preserved.');
   }
-  if (configuration.bundle?.resources && Object.keys(configuration.bundle.resources).length
-    || configuration.bundle?.externalBin?.length) {
-    throw new Error('This project now declares resources or sidecars. Add their verified runtime inventory to the release packaging before continuing.');
-  }
+  if (configuration.bundle?.externalBin?.length) throw new Error('This project now declares sidecars. Add their verified runtime inventory before packaging.');
+  const resources = await releaseResources(root, configuration.bundle?.resources);
   const version = pkg.version;
   const binaries = crate.targets.filter(item => item.kind.includes('bin'));
   if (binaries.length !== 1 || binaries[0].name !== 'subtitle-tools') throw new Error('Unexpected executable target; review packaging.');
@@ -53,7 +51,7 @@ async function preflight() {
   if (await exists(destination)) await verifyRelease(root, destination);
   await assertIdlePaths([destination]);
   return { version, commit, branch, dirty: Boolean(status), sourceFingerprint: await sourceFingerprint(root),
-    node: process.versions.node, npm: npmVersion, rust: rustVersion, tauri: tauriVersion, target };
+    node: process.versions.node, npm: npmVersion, rust: rustVersion, tauri: tauriVersion, target, resources };
 }
 
 function peImports(bytes) {
@@ -153,12 +151,15 @@ if (args.includes('--check')) {
       await npm(['run', 'tauri', '--', 'build']);
       checks.push({ command: 'npm run tauri -- build', status: 'PASS', elapsedMs: Date.now() - started });
       const nativeImports = await copyRuntime(baseline.target, portable);
+      for (const resource of baseline.resources) {
+        await fs.copyFile(resource.source, path.join(portable, resource.name), fs.constants.COPYFILE_EXCL);
+      }
       const installer = await controlledPath(root, path.join(baseline.target, 'release/bundle/nsis', `Subtitle Tools_${baseline.version}_x64-setup.exe`));
       await fs.copyFile(installer, path.join(candidate, 'SRTTools-Setup.exe'), fs.constants.COPYFILE_EXCL);
       await zipPortable(root, portable, path.join(candidate, 'SRTTools.zip'));
       const files = await fileRecords(root, candidate, await walkFiles(root, candidate));
       const info = {
-        schemaVersion: 1, managedBy: MANAGED_BY, product: 'SRTTools', ...baseline, target: undefined,
+        schemaVersion: 1, managedBy: MANAGED_BY, product: 'SRTTools', ...baseline, target: undefined, resources: undefined,
         builtAt: new Date().toISOString(), platform: 'win32', architecture: 'x64',
         prerequisites: ['Windows x64', 'Microsoft Edge WebView2 Runtime'],
         nativeImports, checks, files, smoke: { status: 'NOT_RUN' },

@@ -3,24 +3,59 @@ import { parseTimestamp, validateCueTime } from './time';
 
 const supportedFormats = new Set<SubtitleFormat>(['srt', 'vtt', 'ass', 'ssa', 'txt', 'csv']);
 
-export function parseSubtitle(input: string, fileName: string): ParseResult {
+export interface SubtitleBodySpan {
+  start: number;
+  end: number;
+  csvValue?: string;
+  csvQuoted?: boolean;
+}
+
+export interface SourceParseResult extends ParseResult {
+  /** Optional source layout for operations which rewrite bodies without reserializing the format. */
+  bodySpans?: SubtitleBodySpan[];
+}
+
+interface ParseOptions {
+  captureBodies?: boolean;
+}
+
+function sourceLineStarts(text: string): number[] {
+  const starts = [0];
+  const newlines = /\r\n|\r|\n/gu;
+  while (newlines.exec(text)) starts.push(newlines.lastIndex);
+  return starts;
+}
+
+function captureBody(spans: SubtitleBodySpan[] | undefined, starts: number[], lines: string[], first: number, count: number, length: number) {
+  if (!spans) return;
+  const start = starts[first] ?? length;
+  const last = first + count - 1;
+  spans.push({ start, end: count > 0 ? starts[last] + lines[last].length : start });
+}
+
+export function parseSubtitle(input: string, fileName: string, options: ParseOptions = {}): SourceParseResult {
   const extension = fileName.split('.').pop()?.toLowerCase() as SubtitleFormat;
   if (!supportedFormats.has(extension)) throw new SubtitleError('UNSUPPORTED_FORMAT', '请选择 SRT、VTT、ASS、SSA、CSV 或含时间信息的 TXT 文件。');
-  const text = input.replace(/^\ufeff/, '');
+  const prefix = input.startsWith('\ufeff') ? 1 : 0;
+  const text = input.slice(prefix);
   if (/^WEBVTT(?:\s|$)/.test(text.trimStart()) && !['vtt', 'txt'].includes(extension)) {
     throw new SubtitleError('FORMAT_MISMATCH', '文件内容为 WebVTT，但扩展名不匹配。请将扩展名改为 .vtt 后重新导入。');
   }
-  if (extension === 'vtt') return parseVtt(text, fileName);
-  if (extension === 'csv') return parseCsv(text, fileName);
-  if (extension === 'ass' || extension === 'ssa') return parseAss(text, fileName, extension);
   if (extension === 'txt' && !text.includes('-->')) throw new SubtitleError('MISSING_TIMESTAMPS', 'TXT 文件没有可识别的时间信息。请使用带时间行的 SRT 模板；软件不会自动编造时间。');
-  return parseSrt(text, fileName, extension);
+  const bodySpans = options.captureBodies ? [] as SubtitleBodySpan[] : undefined;
+  let result: ParseResult;
+  if (extension === 'vtt') result = parseVtt(text, fileName, bodySpans);
+  else if (extension === 'csv') result = parseCsv(text, fileName, bodySpans);
+  else if (extension === 'ass' || extension === 'ssa') result = parseAss(text, fileName, extension, bodySpans);
+  else result = parseSrt(text, fileName, extension, bodySpans);
+  return bodySpans ? { ...result, bodySpans: bodySpans.map(span => ({ ...span, start: span.start + prefix, end: span.end + prefix })) } : result;
 }
 
-export function parseSrt(text: string, fileName = 'subtitle.srt', format: SubtitleFormat = 'srt'): ParseResult {
+export function parseSrt(text: string, fileName = 'subtitle.srt', format: SubtitleFormat = 'srt', bodySpans?: SubtitleBodySpan[]): ParseResult {
   const document = newDocument(fileName, format, text);
   const diagnostics: ParseDiagnostic[] = [];
   const lines = text.replace(/^\ufeff/, '').replace(/\r\n?/g, '\n').split('\n');
+  const starts = bodySpans ? sourceLineStarts(text) : [];
   const headers: { start: number; time: number; index?: number }[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i].includes('-->')) continue;
@@ -68,16 +103,18 @@ export function parseSrt(text: string, fileName = 'subtitle.srt', format: Subtit
     }
     const cue: SubtitleCue = { id: createId(), index, startMs, endMs, text: body.join('\n') };
     document.cues.push(cue);
+    captureBody(bodySpans, starts, lines, header.time + 1, body.length, text.length);
     const timeError = validateCueTime(cue);
     if (timeError) diagnostics.push({ severity: 'error', code: 'INVALID_CUE_TIME', message: timeError, line: lineNumber, cueIndex: index });
   }
   return { document, diagnostics };
 }
 
-function parseVtt(text: string, fileName: string): ParseResult {
+function parseVtt(text: string, fileName: string, bodySpans?: SubtitleBodySpan[]): ParseResult {
   const document = newDocument(fileName, 'vtt', text);
   const diagnostics: ParseDiagnostic[] = [];
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const starts = bodySpans ? sourceLineStarts(text) : [];
   if (!/^WEBVTT(?:[ \t].*)?$/.test(lines[0].trim()) || lines[0].includes('-->')) throw new SubtitleError('INVALID_VTT', 'VTT 文件必须以 WEBVTT 头开始，头部不能包含时间箭头。');
   let i = 1;
   while (i < lines.length && lines[i].trim()) {
@@ -111,6 +148,7 @@ function parseVtt(text: string, fileName: string): ParseResult {
       const vttTime = (value: string) => parseTimestamp(/^\d{2}:\d{2}\.\d{3}$/.test(value) ? `00:${value}` : value);
       const cue = { id: createId(), index: document.cues.length + 1, startMs: vttTime(match[1]), endMs: vttTime(match[2]), text: body.join('\n') };
       document.cues.push(cue);
+      captureBody(bodySpans, starts, lines, timeLine + 1, body.length, text.length);
       if (![match[1], match[2]].every(value => /^(?:\d{2,}:)?\d{2}:\d{2}\.\d{3}$/.test(value))) diagnostics.push({ severity: 'warning', code: 'NONSTANDARD_TIME', message: 'VTT 时间使用了非标准分隔符或毫秒位数，导出时会规范化。', line: timeLine + 1, cueIndex: cue.index });
       if (match[3]) diagnostics.push({ severity: 'warning', code: 'LOSSY_VTT', message: 'VTT cue 的位置、对齐等设置不会保留。', line: timeLine + 1, cueIndex: cue.index });
       const error = validateCueTime(cue);
@@ -123,7 +161,7 @@ function parseVtt(text: string, fileName: string): ParseResult {
   return { document, diagnostics };
 }
 
-export function parseCsvRows(text: string, rowLines?: number[]): string[][] {
+export function parseCsvRows(text: string, rowLines?: number[], sourceFields?: SubtitleBodySpan[][]): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -131,6 +169,12 @@ export function parseCsvRows(text: string, rowLines?: number[]): string[][] {
   let closedQuote = false;
   let line = 1;
   let rowStartLine = 1;
+  let fieldStart = 0;
+  let fieldSpans: SubtitleBodySpan[] = [];
+  const captureField = (end: number) => {
+    if (sourceFields) fieldSpans.push({ start: fieldStart, end, csvValue: field, csvQuoted: text[fieldStart] === '"' });
+    fieldStart = end + 1;
+  };
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (quoted) {
@@ -141,10 +185,13 @@ export function parseCsvRows(text: string, rowLines?: number[]): string[][] {
     } else if (char === '"') {
       if (field || closedQuote) throw new SubtitleError('INVALID_CSV', 'CSV 引号位置错误。');
       quoted = true;
-    } else if (char === ',') { row.push(field); field = ''; closedQuote = false; }
+    } else if (char === ',') { captureField(i); row.push(field); field = ''; closedQuote = false; }
     else if (char === '\n' || char === '\r') {
+      captureField(i);
       row.push(field); rows.push(row); rowLines?.push(rowStartLine); row = []; field = ''; closedQuote = false;
+      sourceFields?.push(fieldSpans); fieldSpans = [];
       if (char === '\r' && text[i + 1] === '\n') i++;
+      fieldStart = i + 1;
       line++; rowStartLine = line;
     } else {
       if (closedQuote) throw new SubtitleError('INVALID_CSV', 'CSV 引号结束后必须是逗号或换行。');
@@ -152,17 +199,22 @@ export function parseCsvRows(text: string, rowLines?: number[]): string[][] {
     }
   }
   if (quoted) throw new SubtitleError('INVALID_CSV', 'CSV 存在未闭合的引号。');
-  if (field || row.length || closedQuote) { row.push(field); rows.push(row); rowLines?.push(rowStartLine); }
+  if (field || row.length || closedQuote) {
+    captureField(text.length);
+    row.push(field); rows.push(row); rowLines?.push(rowStartLine); sourceFields?.push(fieldSpans);
+  }
   return rows;
 }
 
-function parseCsv(text: string, fileName: string): ParseResult {
+function parseCsv(text: string, fileName: string, bodySpans?: SubtitleBodySpan[]): ParseResult {
   const document = newDocument(fileName, 'csv', text);
   const diagnostics: ParseDiagnostic[] = [];
   const rowLines: number[] = [];
-  const rows = parseCsvRows(text, rowLines);
+  const sourceFields = bodySpans ? [] as SubtitleBodySpan[][] : undefined;
+  const rows = parseCsvRows(text, rowLines, sourceFields);
   const header = rows.shift()?.map(value => value.trim().toLowerCase());
   rowLines.shift();
+  sourceFields?.shift();
   if (!header || header.length !== 4 || new Set(header).size !== 4 || !['index', 'start', 'end', 'text'].every(column => header.includes(column))) throw new SubtitleError('INVALID_CSV', 'CSV 首行必须恰好为 index,start,end,text 四列（顺序可调整）；时间使用 HH:MM:SS,mmm。请先移除其他列，避免静默丢失数据。');
   const column = (row: string[], name: string) => row[header.indexOf(name)] ?? '';
   rows.forEach((row, position) => {
@@ -177,6 +229,7 @@ function parseCsv(text: string, fileName: string): ParseResult {
       if (!/^\d+$/.test(indexText) || !Number.isSafeInteger(index) || index < 1) throw new Error('index');
       const cue = { id: createId(), index, startMs: parseTimestamp(column(row, 'start')), endMs: parseTimestamp(column(row, 'end')), text: column(row, 'text').replace(/\r\n?/g, '\n') };
       document.cues.push(cue);
+      if (bodySpans && sourceFields) bodySpans.push(sourceFields[position][header.indexOf('text')]);
       const error = validateCueTime(cue);
       if (error) diagnostics.push({ severity: 'error', code: 'INVALID_CUE_TIME', message: error, cueIndex: index, line: rowLines[position] });
     } catch {
@@ -186,12 +239,13 @@ function parseCsv(text: string, fileName: string): ParseResult {
   return { document, diagnostics };
 }
 
-function parseAss(text: string, fileName: string, format: 'ass' | 'ssa'): ParseResult {
+function parseAss(text: string, fileName: string, format: 'ass' | 'ssa', bodySpans?: SubtitleBodySpan[]): ParseResult {
   const document = newDocument(fileName, format, text);
   const diagnostics: ParseDiagnostic[] = [{ severity: 'warning', code: 'LOSSY_ASS', message: '转换为通用字幕模型会丢失字体、颜色、位置、样式、绘图及特效。请核对预览；带绘图模式的条目不支持转换。' }];
   let inEvents = false;
   let columns: string[] = [];
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const starts = bodySpans ? sourceLineStarts(text) : [];
   if (!/^\s*\[Script Info\]/im.test(text)) throw new SubtitleError('INVALID_ASS', 'ASS / SSA 文件缺少 [Script Info]。');
   lines.forEach((line, lineIndex) => {
     if (/^\s*\[/.test(line)) { inEvents = /^\s*\[Events\]\s*$/i.test(line); return; }
@@ -219,6 +273,11 @@ function parseAss(text: string, fileName: string, format: 'ass' | 'ssa'): ParseR
       if (/\{[^}]*\\p[1-9]\d*[^}]*\}/i.test(read('text'))) throw new Error('drawing');
       const cue = { id: createId(), index: document.cues.length + 1, startMs: time(read('start')), endMs: time(read('end')), text: read('text').replace(/\{[^}]*\}/g, '').replace(/\\[Nn]/g, '\n').replace(/\\h/g, '\u00a0') };
       document.cues.push(cue);
+      if (bodySpans) {
+        let bodyStart = /^\s*Dialogue:\s*/i.exec(line)![0].length;
+        for (let column = 1; column < columns.length; column++) bodyStart = line.indexOf(',', bodyStart) + 1;
+        bodySpans.push({ start: starts[lineIndex] + bodyStart, end: starts[lineIndex] + line.length });
+      }
       const error = validateCueTime(cue);
       if (error) diagnostics.push({ severity: 'error', code: 'INVALID_CUE_TIME', message: error, line: lineIndex + 1, cueIndex: cue.index });
     } catch {

@@ -69,14 +69,28 @@ export async function sourceFingerprint(root) {
   const listing = await run('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, capture: true });
   const digest = createHash('sha256');
   for (const name of [...new Set(listing.split('\0').filter(Boolean))].sort()) {
-    if (['docs/', 'wiki_memory/', 'prompt/'].some(prefix => name.startsWith(prefix))
-      || ['README.md', 'AGENTS.md'].includes(name)) continue;
+    if (name !== 'docs/THIRD_PARTY_NOTICES.txt' && (['docs/', 'wiki_memory/', 'prompt/'].some(prefix => name.startsWith(prefix))
+      || ['README.md', 'AGENTS.md'].includes(name))) continue;
     const file = await controlledPath(root, path.join(root, name));
     digest.update(name + '\0');
     digest.update(await fs.readFile(file));
     digest.update('\0');
   }
   return digest.digest('hex').toUpperCase();
+}
+
+/** Deliberate resource inventory. New runtime assets require packaging review. */
+export async function releaseResources(root, resources) {
+  if (!resources || Object.keys(resources).length === 0) return [];
+  const entries = Object.entries(resources);
+  if (Array.isArray(resources) || entries.length !== 1
+    || entries[0][0] !== '../docs/THIRD_PARTY_NOTICES.txt' || entries[0][1] !== 'THIRD_PARTY_NOTICES.txt') {
+    throw new Error('Unrecognized Tauri release resource map; review the runtime inventory before packaging.');
+  }
+  const source = await controlledPath(root, path.join(root, 'docs/THIRD_PARTY_NOTICES.txt'));
+  const stat = await fs.stat(source);
+  if (!stat.isFile() || stat.size === 0) throw new Error('Third-party notices must be a nonempty regular file.');
+  return [{ source, name: 'THIRD_PARTY_NOTICES.txt' }];
 }
 
 export async function fileRecords(root, directory, files) {
@@ -301,7 +315,7 @@ export async function validateStage(root, directory, { allowCurrentProcess = fal
   if (await exists(path.join(candidate, 'build-info.json'))) {
     manifest = await verifyRelease(root, candidate, { requireSmoke: false });
   } else if (await exists(candidate)) {
-    const knownIncomplete = /^(?:SRTTools\/(?:subtitle-tools\.exe|[a-z\d_.-]+\.dll)|SRTTools\.zip|SRTTools-Setup\.exe)$/iu;
+    const knownIncomplete = /^(?:SRTTools\/(?:subtitle-tools\.exe|THIRD_PARTY_NOTICES\.txt|[a-z\d_.-]+\.dll)|SRTTools\.zip|SRTTools-Setup\.exe)$/iu;
     for (const file of await walkFiles(root, candidate)) {
       if (!knownIncomplete.test(relativeName(candidate, file))) throw new Error('Unknown file in incomplete candidate; cleanup skipped.');
     }

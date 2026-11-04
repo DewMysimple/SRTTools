@@ -47,21 +47,46 @@ npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+npm run test:release
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
 覆盖核心边界、字节导入到导出、批次失败与取消、编码不确定时阻止导出、ZIP 重名、设置 / 历史重载，以及真实浏览器 Worker 流程。详细范围与手工验收见 [TESTING](docs/TESTING.md)。
 
-## Windows 安装包
+## Windows 构建与最新产物
 
 ```powershell
-npm run tauri -- build
+npm run release:win
+npm run release:verify
+npm run disk:report
 ```
 
-生成：`src-tauri/target/release/bundle/nsis/Subtitle Tools_0.2.0_x64-setup.exe`。
+最终文件统一放在项目的 `release-output/`：
 
-NSIS 为当前用户安装，提供简体中文界面。运行程序位于 `src-tauri/target/release/subtitle-tools.exe`。初次构建需要下载 Rust crates 和 NSIS 工具；缺少 WebView2 的机器由安装器下载官方运行时。应用本身没有云端字幕服务。当前包未配置代码签名。
+```text
+release-output/
+  SRTTools/subtitle-tools.exe
+  SRTTools.zip
+  SRTTools-Setup.exe
+  SHA256SUMS.txt
+  build-info.json
+```
+
+ZIP 包含顶层 `SRTTools/`，解压后运行其中的程序，仍需系统安装 Microsoft Edge WebView2 Runtime。安装器供当前用户安装。构建脚本会运行质量检查、真实 Tauri 打包和 ZIP 解压后的原生导入/处理/导出冒烟，全部通过才替换上一套结果。需要已登录的可交互 Windows 桌面，并先关闭正在使用的 Subtitle Tools；仅启动 EXE 不会被计为完整验收。
+
+`release:win` 默认要求已提交的干净工作树，版本清单须一致；开发验收可显式使用 `npm run release:win -- --allow-dirty`，此状态会写入构建记录。成功后使用固定文件名替换旧版，并清理已复制验证的 NSIS 中间安装器和脚本暂存报告。Vite 的 `dist/` 与 Rust `target/` 是开发中间产物，最终交付目录始终是 `release-output/`。
+
+清理默认只列出目标和大小；确认目标后显式执行：
+
+```powershell
+npm run clean:outputs
+npm run clean:outputs -- --apply
+```
+
+默认保留编译增量缓存。低占用模式先预览 `npm run clean:release-cache -- --confirm-release-cache`，再加 `--apply` 仅清理经核实的本项目 Rust release 缓存，下次 release 会重新编译。不会清理 `node_modules`、用户应用数据或共享的外部 Cargo target。未知文件、链接跳转、仍在使用的产物与待恢复的旧发布副本均受保护。详细规则见 [RELEASE_POLICY](docs/RELEASE_POLICY.md)。
+
+NSIS 提供简体中文界面。初次构建需要下载 Rust crates 和 NSIS 工具；缺少 WebView2 的机器由安装器下载官方运行时。应用本身没有云端字幕服务。当前包未配置代码签名。仅需内部打包时可使用 `npm run tauri -- build`，它不会执行上述发布晋升与清理流程。
 
 ## 目录
 
@@ -78,6 +103,8 @@ src-tauri/          Rust IPC、路径授权、安全写入、NSIS 配置
 e2e/               Playwright 真实浏览器流程
 docs/              架构、功能、测试说明与截图
 examples/          可手动导入的示例文件
+scripts/           受控发布、哈希校验、安全清理与 Windows 冒烟
+release-output/    最新一套本地交付物（Git 忽略）
 ```
 
 架构和安全边界见 [ARCHITECTURE](docs/ARCHITECTURE.md)。

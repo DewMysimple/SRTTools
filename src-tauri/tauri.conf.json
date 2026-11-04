@@ -30,6 +30,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": { "../docs/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt" },
     "category": "Utility",
     "shortDescription": "本地字幕文件工具箱",
     "longDescription": "极简、轻量、隐私优先的本地字幕处理工具，支持文本清理、时间调整、格式转换和批量导出。",

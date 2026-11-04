@@ -25,11 +25,13 @@ npm run disk:report
 
 脚本要求已安装的依赖与 lockfile 一致，npm、Tauri、Cargo 版本一致，并检查真实 Cargo target 位置。共享或自定义 target 不参与本脚本发布和清理。发生版本漂移时先同步版本清单，再重新执行。
 
-正式交付从已提交的源码构建。开发验收可明确使用 `npm run release:win -- --allow-dirty`，构建清单会记录 `dirty: true`。源码指纹覆盖 Git 可见的源码、脚本、配置和锁文件，排除 docs、wiki_memory、prompt、README 和根 AGENTS。纯文档交接提交不会使相同源码的产物失效。
+正式交付从已提交的源码构建。开发验收可明确使用 `npm run release:win -- --allow-dirty`，构建清单会记录 `dirty: true`。源码指纹覆盖 Git 可见的源码、脚本、配置、锁文件及实际分发的 `docs/THIRD_PARTY_NOTICES.txt`，排除其它 docs、wiki_memory、prompt、README 和根 AGENTS。纯文档交接提交不会使相同源码的产物失效。
 
 构建依次执行 lint、类型检查、发布脚本安全测试、Vitest、前端构建、Windows Rust 测试和 Clippy、Chromium E2E，以及 Tauri NSIS 构建。测试输出放在本次受控暂存目录。
 
-之后复制主程序和本地依赖 DLL，生成 ZIP，核对目录、ZIP 数据流和实际解压文件的完整清单、大小及 SHA-256。在解压得到的 EXE 上调用 Windows UI Automation 冒烟，完成真实选择字幕、处理、导出、原字节保护和应用退出。冒烟驱动临时使用的应用设置在结束时恢复。必要资源或 sidecar 新增到 Tauri 配置后，脚本会要求先补齐经验证的打包清单。
+之后复制主程序、本地依赖 DLL 及明确配置的第三方许可文件，生成 ZIP，核对目录、ZIP 数据流和实际解压文件的完整清单、大小及 SHA-256。在解压得到的 EXE 上调用 Windows UI Automation 冒烟，完成真实选择字幕、处理、导出、原字节保护和应用退出。冒烟驱动临时使用的应用设置在结束时恢复。
+
+当前资源白名单只接受 Tauri map `../docs/THIRD_PARTY_NOTICES.txt` → `THIRD_PARTY_NOTICES.txt`，并验证源文件在仓库内、非链接且非空。其它资源或 sidecar 新增到 Tauri 配置后，须先补齐经验证的打包清单。
 
 只有全部通过并确认构建过程中源码指纹没有变化，才将旧发布目录移入本次事务，再晋升新目录。发布前确认旧目录内没有运行中的程序。发布后再次校验，失败时回滚。回滚本身受锁定等原因阻断时，包含旧版本的暂存目录受保护并报告具体恢复位置，后续通用清理也会保留。现有发布目录出现未知文件、目录或哈希变化会阻止替换，供人工核对。构建失败保留上一套成功产物。
 

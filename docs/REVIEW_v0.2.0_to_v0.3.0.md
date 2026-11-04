@@ -50,3 +50,11 @@
 修复后 `npm run release:win -- --allow-dirty` 与 `npm run release:verify` 均退出 0，11 发布安全测试 / 157 Vitest / 25 Chromium / 13 Rust、Clippy、lint/typecheck/build 和真实 Tauri NSIS 构建均 PASS；实际 ZIP 解压 EXE 的启动、导入、处理、导出、原文件保护、退出、Store 恢复与 QA 清理全部通过。Gate 1 放行时版本仍为 0.2.0、记录提交 `c016a99` 与 `dirty: true` 及源码指纹，属于开发验收，最终交付会从已提交的 0.3.0 源码重建。
 
 首次最新发布目录仅 5 个文件，共 6,726,046 bytes；staging/lock 清空，3 个旧 NSIS 安装器（审计前共 4,147,314 bytes）及本脚本失败摘要自动清理。Setup SHA-256 `2AD70557F539BB9E8A904BFA3E492842558BCC7548A3E32F7A448FA6A879095D`；ZIP SHA-256 `F5F3118F9152745B9C02378F809096EF6269F70702470865F41865D80B6DED34`。连续两次成功和一次真实故障保留验收在最终 0.3.0 已提交源码上执行。
+
+## 简繁转换（Gate 2）
+
+采用固定版本 `opencc-js 1.4.2`（代码 MIT、词典 Apache-2.0），仅提供通用简→繁、繁→简。离线词组转换在 Worker 内运行，不访问服务。许可证原文放入 `docs/THIRD_PARTY_NOTICES.txt`，安装器与便携 ZIP 都分发该文件；发布脚本仅允许这一明确资源映射，其他未知资源仍需审阅后才能打包。
+
+现解析器可选返回正文跨度，只有简繁 Worker 请求该信息；其他工具原有序列化语义不变。简繁只替换正文，重解析验证条数、编号和毫秒时间一致，并恢复原 cue ID 供既有差异预览使用。保留原换行，所以此工具的换行下拉明确禁用。SRT 的原编号及时间字面量、带时间 TXT、VTT 元数据/标识/设置、CSV 列序/转义/多行、ASS/SSA 样式与控制序列都有整文件精确输出测试。绘图模式和不能可靠解析的结构继续明确拒绝。
+
+先复现缺失能力：8 个 Worker 测试失败，纯转换模块缺失。实现后完整 `npm test` 为 184 PASS（新增 27），Chromium 28 PASS（新增 3），lint/typecheck/build PASS。发布安全测试因新增许可证资源保护扩展为 12 PASS。Worker 生产包为 1,246.16 kB，应用主 JS 450.88 kB；词典不需网络加载。实际 Windows 新功能及最终安装/解压验收仍待 Gate 6，不以浏览器结果替代。

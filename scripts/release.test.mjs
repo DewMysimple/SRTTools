@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   MANAGED_BY, controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
-  sha256, sourceFingerprint, run, validateStage, verifyRelease, walkFiles, withReleaseLock, writeMetadata, zipPortable, assertIdlePaths,
+  sha256, sourceFingerprint, run, validateStage, verifyRelease, walkFiles, withReleaseLock, writeMetadata, zipPortable, assertIdlePaths, releaseResources,
 } from './release-common.mjs';
 import { cleanOutputs, planCleanup } from './clean-outputs.mjs';
 
@@ -155,6 +155,24 @@ test('source fingerprint catches edited dirty files while allowing documentation
   assert.equal(await sourceFingerprint(root), first);
   await fs.writeFile(path.join(root, 'src/main.ts'), 'changed while still untracked');
   assert.notEqual(await sourceFingerprint(root), first);
+  const changedSource = await sourceFingerprint(root);
+  await fs.writeFile(path.join(root, 'docs/THIRD_PARTY_NOTICES.txt'), 'runtime license text');
+  assert.notEqual(await sourceFingerprint(root), changedSource);
+});
+
+test('only the explicit third-party notice resource can enter the portable package', async t => {
+  const root = await fixture(t);
+  const map = { '../docs/THIRD_PARTY_NOTICES.txt': 'THIRD_PARTY_NOTICES.txt' };
+  assert.deepEqual(await releaseResources(root, undefined), []);
+  await assert.rejects(releaseResources(root, map), /ENOENT/u);
+  await fs.mkdir(path.join(root, 'docs'));
+  const source = path.join(root, 'docs/THIRD_PARTY_NOTICES.txt');
+  await fs.writeFile(source, 'license text');
+  assert.deepEqual(await releaseResources(root, map), [{ source, name: 'THIRD_PARTY_NOTICES.txt' }]);
+  await assert.rejects(releaseResources(root, { ...map, '../private.txt': 'private.txt' }), /Unrecognized/u);
+  await assert.rejects(releaseResources(root, ['../docs/THIRD_PARTY_NOTICES.txt']), /Unrecognized/u);
+  await fs.writeFile(source, '');
+  await assert.rejects(releaseResources(root, map), /nonempty/u);
 });
 
 test('Windows process guard refuses a directory with a running executable', { skip: process.platform !== 'win32' }, async () => {

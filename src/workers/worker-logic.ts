@@ -7,11 +7,15 @@ import { safeFileName, uniqueOutputNames } from '../services/export-service';
 import type { ImportedFile } from '../services/file-service';
 import type { ProcessedOutput, ProcessedTask, ProcessingOptions, ProcessingRequest } from '../services/processing-service';
 import { validateFileNamePattern } from '../services/settings-service';
+import { convertChineseSubtitle } from '../core/chinese-subtitle';
+import type { SubtitleBodySpan } from '../core/parser';
 
 interface ImportedDocument {
   document: SubtitleDocument;
   diagnostics: ParseDiagnostic[];
   uncertainEncoding: boolean;
+  sourceText?: string;
+  bodySpans?: SubtitleBodySpan[];
 }
 
 function uniqueDiagnostics(diagnostics: ParseDiagnostic[]): ParseDiagnostic[] {
@@ -24,11 +28,11 @@ function uniqueDiagnostics(diagnostics: ParseDiagnostic[]): ParseDiagnostic[] {
   });
 }
 
-function readDocument(file: ImportedFile, options: ProcessingOptions): ImportedDocument {
+function readDocument(file: ImportedFile, options: ProcessingOptions, captureBodies = false): ImportedDocument {
   if (file.error) throw new SubtitleError('READ_FAILED', file.error);
   const decoded = decodeBytes(file.bytes, options.encoding);
   const suspectEncoding = decoded.text.includes('\ufffd') || decoded.text.includes('\0');
-  const parsed = parseSubtitle(decoded.text, file.name);
+  const parsed = parseSubtitle(decoded.text, file.name, { captureBodies });
   parsed.document.encoding = decoded.encoding;
   if (file.path) parsed.document.sourcePath = file.path;
   return {
@@ -39,6 +43,7 @@ function readDocument(file: ImportedFile, options: ProcessingOptions): ImportedD
       ...parsed.diagnostics,
     ],
     uncertainEncoding: (decoded.confidence === 'low' || suspectEncoding) && (!options.encoding || options.encoding === 'auto'),
+    ...(captureBodies ? { sourceText: decoded.text, bodySpans: parsed.bodySpans } : {}),
   };
 }
 
@@ -109,7 +114,7 @@ function serializeDocuments(documents: SubtitleDocument[], options: ProcessingOp
 function executeFile(request: ProcessingRequest, task: ProcessedTask): ProcessedTask {
   const file = request.files[0];
   const inputIndex = request.options.fileIndexes?.[file.id] ?? 1;
-  const input = readDocument(file, request.options);
+  const input = readDocument(file, request.options, request.operation === 'chinese');
   task.document = input.document;
   task.diagnostics = input.diagnostics;
   if (request.operation === 'info') {
@@ -125,6 +130,27 @@ function executeFile(request: ProcessingRequest, task: ProcessedTask): Processed
     return { ...task, status: 'success' };
   }
   assertCanExport(input, request.operation);
+  if (request.operation === 'chinese') {
+    const direction = request.params.direction ?? 's2t';
+    if (direction !== 's2t' && direction !== 't2s') throw new SubtitleError('INVALID_PARAMETER', '简繁转换方向不受支持。');
+    const result = convertChineseSubtitle(input.sourceText!, {
+      document: input.document, diagnostics: input.diagnostics, bodySpans: input.bodySpans,
+    }, direction);
+    task.outputs = [{
+      name: outputName(file.name, input.document.format, request.options, inputIndex),
+      text: result.text,
+      bytes: encodeText(result.text, request.options.outputEncoding),
+      document: result.document,
+    }];
+    task.diagnostics = task.diagnostics.filter(diagnostic => diagnostic.code !== 'LOSSY_ASS' && diagnostic.code !== 'LOSSY_VTT')
+      .map(diagnostic => diagnostic.code === 'NONSTANDARD_TIME' ? { ...diagnostic, message: '原时间行使用非标准格式，本次保留原样。' } : diagnostic);
+    if (input.document.format === 'ass' || input.document.format === 'ssa') {
+      task.diagnostics.push({ severity: 'info', code: 'ASS_PREVIEW', message: '输出保留原样式和控制标记；预览仅显示通用字幕正文，不呈现样式效果。' });
+    }
+    const changed = result.document.cues.filter((cue, position) => cue.text !== input.document.cues[position].text).length;
+    task.summary = `简繁转换完成：${changed} / ${input.document.cues.length} 条正文变化；保留编号、时间、原换行与格式布局。`;
+    return { ...task, status: 'success' };
+  }
   const result = request.operation === 'encoding' || request.operation === 'rename'
     ? { documents: [input.document], diagnostics: [] as ParseDiagnostic[], summary: '已按导出编码、换行和命名规则规范化字幕' }
     : processDocument(input.document, request.operation, request.params);
