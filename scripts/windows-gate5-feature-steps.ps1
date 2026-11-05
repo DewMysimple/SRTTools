@@ -1,7 +1,9 @@
 ﻿# Invoked by the Explorer acceptance lifecycle after registry tests; uses only owned fixtures.
 $stage = 'gate5-real-explorer-drag'
 Open-Home
-$explorerHandle = [IntPtr]$explorerWindow.HWND
+$explorerHandle = [SubtitleDesktopInteraction]::RootWindow([IntPtr]$explorerWindow.HWND)
+Assert-Condition ([SubtitleDesktopInteraction]::WindowClass($explorerHandle) -match '^(CabinetWClass|ExploreWClass)$') 'The owned Explorer root was not a folder window.'
+[void][SubtitleDesktopInteraction]::ShowWindow($explorerHandle,9)
 $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $appWidth = [Math]::Min(1200, $screen.Width - 760)
 Assert-Condition ($appWidth -ge 900) 'Desktop is too narrow for a verified two-window physical drag.'
@@ -9,6 +11,7 @@ Assert-Condition ($appWidth -ge 900) 'Desktop is too narrow for a verified two-w
 [void][SubtitleDesktopInteraction]::MoveWindow($explorerHandle, $screen.Left + $appWidth + 30, $screen.Top + 10, 700, 700, $true)
 [SubtitleDesktopInteraction]::Topmost($applicationHandle,$true)
 [SubtitleDesktopInteraction]::Topmost($explorerHandle,$true)
+[void][SubtitleDesktopInteraction]::SetForegroundWindow($explorerHandle)
 function Drag-ExternalItems([string[]] $Paths) {
   $view = $explorerWindow.Document
   $view.SelectItem($view.Folder.ParseName([IO.Path]::GetFileName($Paths[0])), 1 + 4 + 8 + 16)
@@ -20,13 +23,22 @@ function Drag-ExternalItems([string[]] $Paths) {
       $_.Current.Name -eq [IO.Path]::GetFileName($Paths[0]) -or $_.Current.Name -eq [IO.Path]::GetFileNameWithoutExtension($Paths[0])
     } | Select-Object -First 1
   } 'Physical drag source fixture was not visible in Explorer.'
-  $bounds = $sourceItem.Current.BoundingRectangle
-  $drop = (Get-Control '把字幕文件拖到这里').Current.BoundingRectangle
-  $x1 = [int]($bounds.Left + $bounds.Width / 2); $y1 = [int]($bounds.Top + $bounds.Height / 2)
-  $x2 = [int]($drop.Left + $drop.Width / 2); $y2 = [int]($drop.Top + $drop.Height / 2)
-  Assert-Condition ([SubtitleDesktopInteraction]::RootAt($x1,$y1) -eq $explorerHandle) 'Owned Explorer drag source was covered.'
-  Assert-Condition ([SubtitleDesktopInteraction]::RootAt($x2,$y2) -eq $applicationHandle) 'Owned application drop target was covered.'
-  [SubtitleDesktopInteraction]::Drag($x1,$y1,$x2,$y2)
+  # Explorer and WebView2 can publish stale UIA rectangles briefly after MoveWindow.
+  # Refresh coordinates until both points really belong to this run's windows.
+  $points = Wait-Condition {
+    $bounds = $sourceItem.Current.BoundingRectangle
+    $drop = (Get-Control '把字幕文件拖到这里').Current.BoundingRectangle
+    $visibleSource = [Windows.Rect]::Intersect($bounds,$explorerElement.Current.BoundingRectangle)
+    $x1 = [int]($visibleSource.Left + $visibleSource.Width / 2); $y1 = [int]($visibleSource.Top + $visibleSource.Height / 2)
+    $x2 = [int]($drop.Left + $drop.Width / 2); $y2 = [int]($drop.Top + $drop.Height / 2)
+    $geometry = @{source=$bounds.ToString();target=$drop.ToString();explorer=$explorerElement.Current.BoundingRectangle.ToString();sourceRoot=[SubtitleDesktopInteraction]::RootAt($x1,$y1).ToInt64();targetRoot=[SubtitleDesktopInteraction]::RootAt($x2,$y2).ToInt64();expectedExplorer=$explorerHandle.ToInt64();expectedApp=$applicationHandle.ToInt64()}
+    if (!$report.physicalDragGeometry) { Write-Host ('Physical drag geometry: '+($geometry|ConvertTo-Json -Compress)) }
+    $report.physicalDragGeometry=$geometry
+    if ([SubtitleDesktopInteraction]::RootAt($x1,$y1) -eq $explorerHandle -and [SubtitleDesktopInteraction]::RootAt($x2,$y2) -eq $applicationHandle) {
+      return @{x1=$x1;y1=$y1;x2=$x2;y2=$y2}
+    }
+  } 'Owned physical drag surfaces did not become unobstructed.'
+  [SubtitleDesktopInteraction]::Drag($points.x1,$points.y1,$points.x2,$points.y2)
 }
 try {
   Drag-ExternalItems @($first)
@@ -70,20 +82,25 @@ Click-Control '保存为新预设'
 (Get-Control '预设名称' $types::Edit).GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('Native Batch Preset')
 Click-Control '确认保存'
 Wait-Condition { !(Find-Control '确认保存' $types::Button) } 'Batch preset did not save.' | Out-Null
+$stage = 'gate5-batch-preset-reopen'
 Stop-TestApp
 Start-TestApp $ExePath
+$stage = 'gate5-batch-preset-read-after-restart'
 Open-Tool '查找和替换'
 Assert-Condition ((Get-Control '查找内容' $types::Edit).GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value -eq '') 'Restart implicitly applied a saved preset.'
 Select-Option '参数预设' 'Native Batch Preset'; Click-Control '应用预设'
+$stage = 'gate5-batch-preset-single-reference'
 Import-Fixture $first
 Run-Success
 $single = Save-Single 'batch-reference'
 $expected = $utf8.GetBytes($text.Replace('原文','批量新文'))
 Assert-Bytes $single $expected
+$stage = 'gate5-batch-preset-batch-export'
 $batchLink = $application.FindAll($scope::Descendants, (Condition $element::ControlTypeProperty $types::Hyperlink)) |
   Where-Object { ([string]$_.Current.Name).StartsWith('批量处理') } | Select-Object -First 1
 Assert-Condition ([bool]$batchLink) 'Batch navigation was not available.'
 $batchLink.GetCurrentPattern($invoke).Invoke()
+[void](Get-Control '单项处理' $types::Button)
 Select-Option '参数预设' 'Native Batch Preset'; Click-Control '应用预设'
 Assert-Condition (!(Find-Control '另存为' $types::Button)) 'Batch preset application retained stale results.'
 Click-Control '选择文件'; Select-DialogPath '选择字幕文件' $second

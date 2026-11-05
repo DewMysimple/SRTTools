@@ -1,4 +1,4 @@
-# Reuse physical drag, independent comparison and batch-preset checks without enabling Explorer verbs.
+﻿# Reuse physical drag, independent comparison and batch-preset checks without enabling Explorer verbs.
 . (Join-Path $PSScriptRoot 'windows-native-controls.ps1')
 . (Join-Path $PSScriptRoot 'windows-desktop-interaction.ps1')
 function Open-Home {
@@ -27,8 +27,9 @@ function New-ExternalFixture([string] $Name,[string] $Text) {
 $text="1`r`n00:00:01,000 --> 00:00:02,000`r`n原文 🐱`r`n"
 $dragDirectory=Join-Path $testRoot 'drag inputs'
 [IO.Directory]::CreateDirectory($dragDirectory) | Out-Null
-$paths=@('拖放 一.srt','拖放 二 🐱.srt','拖放 三.srt') | ForEach-Object {
-  $path=Join-Path $dragDirectory $_;[IO.File]::WriteAllText($path,$text,$utf8)
+$fixtures=@(@{name='拖放 一.srt';body=$text},@{name='拖放 二 🐱.srt';body=$text.Replace('原文','不变')},@{name='拖放 三.srt';body=$text.Replace('原文','第三份')})
+$paths=$fixtures | ForEach-Object {
+  $path=Join-Path $dragDirectory $_.name;[IO.File]::WriteAllText($path,$_.body,$utf8)
   $originalHashes[$path]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash;$path
 }
 $first=$paths[0];$second=$paths[1];$third=$paths[2]

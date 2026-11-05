@@ -36,6 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - run: powershell -NoLogo -NoProfile -File scripts/check-windows-scripts.ps1
       - run: rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component clippy
       - run: cargo +stable-x86_64-pc-windows-msvc test --locked --manifest-path src-tauri/Cargo.toml
       - run: cargo +stable-x86_64-pc-windows-msvc clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings

@@ -25,6 +25,8 @@ public static class SubtitleDesktopInteraction {
  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X,Y; public Point(int x,int y) { X=x;Y=y; } }
  public static IntPtr RootAt(int x,int y) { return GetAncestor(WindowFromPoint(new Point(x,y)),2); }
+ public static IntPtr RootWindow(IntPtr handle) { return GetAncestor(handle,2); }
+ public static string WindowClass(IntPtr handle) { var name=new System.Text.StringBuilder(128); GetClassName(handle,name,128); return name.ToString(); }
  public static void ContextMenu(IntPtr explorer) {
   IntPtr view=IntPtr.Zero;
   EnumChildWindows(explorer, delegate(IntPtr child,IntPtr parameter) {

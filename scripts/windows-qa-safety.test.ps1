@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet('suite','sleep','tree','global-lease','delegated-lease')][string] $Mode = 'suite',
   [string] $FixtureRoot,
   [ValidatePattern('^$|^[a-z-]+\.json$')][string] $MarkerName,

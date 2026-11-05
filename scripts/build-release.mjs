@@ -140,6 +140,12 @@ if (args.includes('--check')) {
         await run('cargo', command);
         checks.push({ command: `cargo ${command.join(' ')}`, status: 'PASS', elapsedMs: Date.now() - started });
       }
+      {
+        const command = ['-NoLogo', '-NoProfile', '-File', 'scripts/check-windows-scripts.ps1'];
+        const started = Date.now();
+        await run('pwsh', command);
+        checks.push({ command: `pwsh ${command.join(' ')}`, status: 'PASS', elapsedMs: Date.now() - started });
+      }
       for (const kind of ['safety', 'state']) {
         const script = kind === 'safety' ? 'windows-qa-safety.test.ps1' : 'windows-state-protection.test.ps1';
         const reportPath = await controlledPath(root, path.join(baseline.target, `${path.basename(stage)}-qa-${kind}.json`));

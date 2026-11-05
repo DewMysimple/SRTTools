@@ -20,6 +20,7 @@ function Find-Text([string] $Expression) {
 
 function Open-Tool([string] $Title) {
   (Get-Control '全部工具' $types::Hyperlink).GetCurrentPattern($invoke).Invoke()
+  [void](Get-Control '搜索工具' $types::Edit)
   Wait-Condition {
     $tool = $application.FindAll($scope::Descendants, (Condition $element::ControlTypeProperty $types::Hyperlink)) |
       Where-Object { $_.Current.Name -eq $Title -or ([string]$_.Current.Name).Contains($Title + ' ') } |
@@ -60,8 +61,16 @@ function Expand-ExportOptions {
 }
 
 function Select-Option([string] $Field, [string] $Label) {
-  $control = Get-Control $Field $types::ComboBox
-  $expanded = $control.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+  $ready = Wait-Condition {
+    $candidate = Find-Control $Field $types::ComboBox
+    if (!$candidate -or !$candidate.Current.IsEnabled) { return $false }
+    $pattern = $null
+    if ($candidate.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$pattern)) {
+      return @{control=$candidate;pattern=$pattern}
+    }
+  } 'Native combo box was not ready for selection.'
+  $control = $ready.control
+  $expanded = $ready.pattern
   $expanded.Expand()
   $option = Wait-Condition {
     $condition = New-Object System.Windows.Automation.AndCondition(
