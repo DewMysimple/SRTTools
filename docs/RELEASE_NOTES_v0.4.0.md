@@ -23,3 +23,5 @@ GitHub Releases尚无公开下载版本。公开分发后应把经批准的实�
 实际桌面验收以Windows11、100% DPI、已装WebView2环境为限。Windows10、125%/150%/200% DPI、无WebView2干净系统及超MAX_PATH系统选择器尚未验收。安装包未签名。Explorer菜单为默认关闭的实验入口，真实显示/点击仍BLOCKED，登记成功不代表菜单可用。
 
 单文件32MiB、队列100文件/128MiB、原生输出会话256MiB。普通格式转换可能丢失ASS/SSA样式及VTT设置；严格GBK/GB18030拒绝不可往返字符，可改用UTF-8。没有自动更新功能。
+
+当前本地候选已从干净源码`e6bcd1842a1b710b670eb009a7ce5c5804f79269`重新构建并通过Windows11真实便携/安装卸载验收。源指纹`73274261537860C42BA866961A31CC757EE180012057FF52129116DE3E5CA201`，实际SHA以[收尾报告](RELEASE_CLOSURE_v0.4.0.md)及SHA256SUMS为准；本段不是公开发布声明。

@@ -2,7 +2,15 @@
 
 v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [发布检查表](RELEASE_CHECKLIST_v0.1.1.md)。回归夹具位于 [examples/回归](../examples/回归)，包含 UTF-8 BOM、GBK CRLF、Unicode 文件名、重复编号和损坏时间行。Playwright 将本次运行的截图留在 `test-results/`。
 
-## v0.4.0 正式验收（2026-11-04）
+## v0.4.0 第五阶段收尾复核（2026-11-05）
+
+本轮重新检查源码`e6bcd1842a1b710b670eb009a7ce5c5804f79269`、dirty=false、FP=`73274261537860C42BA866961A31CC757EE180012057FF52129116DE3E5CA201`。17发布安全/311 Vitest/42 Rust/72 Chromium、lint/typecheck/build/Clippy、实际PS5 Desktop20脚本解析与编码、安全10/状态12全部通过。完整release:win 221.362s及release:verify PASS。新便携版smoke/features/folder/closure和固定Setup19+workflow10均通过，真实物理拖放、严格编码、目录锁/权限/平铺/层级/取消/重试、预设重启/JSON、源保护、原Store/注册表恢复均分别有证据。
+
+当前六件大小/完整SHA、逐命令耗时、源码CI、失败原因、人工未验矩阵与主线交付见[RELEASE_CLOSURE](RELEASE_CLOSURE_v0.4.0.md)。两轮本轮基准未伪造速度改善：50k流程522.85/542.86ms，高于第四阶段293.23ms；执行bundle相同，未确定变慢原因。1017/1017 Worker终止、active0/max1及字节等价仍通过，独立Worker OS峰值NOT_MEASURED。
+
+早期平铺QA断言和新closure驱动编码/夹具/导航等待失败均如实保留；它们不记作正式验收PASS。c3f7e3f实际before-publish失败保全与最终源码成功分开署SHA。项目LICENSE按用户决定待选，公开Release/tag未创建，EXE/Setup未签名，Explorer菜单默认关且历史显示/点击BLOCKED。下文属于各历史阶段，不替代本轮结果。
+
+## v0.4.0 第四阶段历史验收（2026-11-04）
 
 产品源码`28cadeeaf92654f1598dd4f7385811b28fa2a757`在干净main完整发布，dirty=false、sourceFingerprint=`B64CDECC0CD947B5CDE73A7E9486D923CFB8D0BD0FEE947CDD80CCCDFCB21C3C`；正式release:win 262.310s及release:verify均PASS。最终六文件、完整哈希、故障历史、安装/卸载、磁盘前后和主线交付见[发布审阅](REVIEW_v0.4.0_RELEASE.md)。
 

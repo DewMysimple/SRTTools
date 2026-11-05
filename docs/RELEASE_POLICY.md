@@ -17,6 +17,7 @@
 在具备 README 所列 Windows 构建环境的 PowerShell 中执行。
 
 ```powershell
+npm run check:versions
 npm run release:win -- --check
 npm run release:win
 npm run release:verify
@@ -27,7 +28,7 @@ npm run disk:report
 
 正式交付从已提交的源码构建。开发验收可明确使用 `npm run release:win -- --allow-dirty`，构建清单会记录 `dirty: true`。源码指纹覆盖 Git 可见的源码、脚本、配置、锁文件及实际分发的 `docs/THIRD_PARTY_NOTICES.txt`，排除其它 docs、wiki_memory、prompt、README 和根 AGENTS。纯文档交接提交不会使相同源码的产物失效。
 
-构建依次执行 lint、类型检查、发布脚本安全测试、Vitest、前端构建、Windows Rust 测试和 Clippy、实际 Windows PowerShell 5.1 的10项QA安全与12项状态保护回归、Chromium E2E，以及 Tauri NSIS 构建。测试输出放在本次受控暂存目录。
+构建依次执行 lint、类型检查、发布脚本安全测试、Vitest、前端构建、Windows Rust 测试和 Clippy、真实Windows PowerShell5.1全脚本解析/非ASCII-BOM门槛、10项QA安全与12项状态保护回归、Chromium E2E，以及 Tauri NSIS 构建。测试输出放在本次受控暂存目录。
 
 之后复制主程序、本地依赖 DLL 及明确配置的第三方许可文件，生成 ZIP，核对目录、ZIP 数据流和实际解压文件的完整清单、大小及 SHA-256。在解压得到的 EXE 上调用 Windows UI Automation 冒烟，完成真实选择字幕、处理、导出、原字节保护和应用退出。冒烟驱动临时使用的应用设置在结束时恢复。
 

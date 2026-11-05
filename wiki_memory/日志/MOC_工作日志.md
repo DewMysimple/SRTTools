@@ -1,7 +1,7 @@
 ---
 type: moc
 status: active
-updated: 2026-11-04
+updated: 2026-11-05
 topic: work-log-index
 sources: []
 ---
@@ -12,6 +12,7 @@ sources: []
 
 | 日期 | 类型 | 任务结果 | 日志 |
 | --- | --- | --- | --- |
+| 2026-11-05 | maintenance | completed | [v0.4.0 项目收尾](%E5%B7%A5%E7%A8%8B%E7%BB%B4%E6%8A%A4/2026-11-05-v0.4.0%E9%A1%B9%E7%9B%AE%E6%94%B6%E5%B0%BE.md) |
 | 2026-11-04 | maintenance | completed | [接入工程记忆与 Git 基线](%E5%B7%A5%E7%A8%8B%E7%BB%B4%E6%8A%A4/2026-11-04-%E6%8E%A5%E5%85%A5%E5%B7%A5%E7%A8%8B%E8%AE%B0%E5%BF%86%E4%B8%8EGit%E5%9F%BA%E7%BA%BF.md) |
 | 2026-11-04 | feature | completed | [v0.4.0 高级效率工具](%E5%8A%9F%E8%83%BD%E6%B7%BB%E5%8A%A0/2026-11-04-v0.4.0%E9%AB%98%E7%BA%A7%E6%95%88%E7%8E%87%E5%B7%A5%E5%85%B7.md) |
 | 2026-11-04 | feature | completed | [v0.3.0 主线、发布与字幕能力迭代](%E5%8A%9F%E8%83%BD%E6%B7%BB%E5%8A%A0/2026-11-04-v0.3.0%E4%B8%BB%E7%BA%BF%E4%B8%8E%E5%8F%91%E5%B8%83%E4%BC%98%E5%8C%96.md) |
