@@ -1,5 +1,9 @@
 # 测试与验收
 
+## v0.6.1 本地草稿恢复
+
+Rust 注入暂存和发布故障，并验证真实 Windows 独占文件、回退和容量边界。Vitest 验证防抖与 revision 串行，Chromium 模拟桌面 IPC 验证恢复交互。Windows 发布驱动在隔离草稿命名空间内执行真实进程终止、重启、来源冲突、另存为与容量基准。见 [v0.6.1 QA](TIMELINE_V0.6.1_QA.md)。
+
 ## v0.6.0 本地媒体预览
 
 Vitest 检查媒体事件、播放拒绝、缓冲、区间循环、快速 seek 和时间转换。Playwright 用 FFmpeg 生成的合成 WebM 实际解码并检查联动，Tauri IPC 在浏览器中模拟。Windows 另以真实原生文件选择器和 WebView2 加载合成 H.264/AAC MP4，核对独立于浏览器的两套包体验收。具体命令、环境、样本和结果见 [v0.6.0 QA](TIMELINE_V0.6_QA.md)。

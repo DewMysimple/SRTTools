@@ -8,6 +8,7 @@ export interface AppSettings {
   lineEnding: 'LF' | 'CRLF';
   autoOpenDirectory: boolean;
   showPreview: boolean;
+  protectTimelineDrafts: boolean;
 }
 
 export const defaultSettings: AppSettings = {
@@ -18,6 +19,7 @@ export const defaultSettings: AppSettings = {
   lineEnding: 'CRLF',
   autoOpenDirectory: false,
   showPreview: true,
+  protectTimelineDrafts: true,
 };
 
 function normalizeSettings(value: unknown): AppSettings {
@@ -33,6 +35,7 @@ function normalizeSettings(value: unknown): AppSettings {
     lineEnding: raw.lineEnding === 'LF' ? 'LF' : 'CRLF',
     autoOpenDirectory: raw.autoOpenDirectory === true,
     showPreview: raw.showPreview !== false,
+    protectTimelineDrafts: raw.protectTimelineDrafts !== false,
   };
 }
 

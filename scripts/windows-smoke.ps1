@@ -153,6 +153,8 @@ $mutex = [Threading.Mutex]::new($false, 'Local\SubtitleToolsReleaseSmoke')
 $hasMutex = $false
 $canWriteReport = $false
 $originalWebViewFolder = [Environment]::GetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', 'Process')
+$originalDraftProfile = [Environment]::GetEnvironmentVariable('SRTTOOLS_QA_DRAFT_PROFILE', 'Process')
+$draftProfilePath = $null
 $report = [ordered]@{
   schemaVersion = 1
   producer = 'srttools-windows-smoke'
@@ -392,6 +394,13 @@ try {
   $state=$candidate
   if(!$PreserveExistingStore){Write-Synced $storePath ($utf8.GetBytes('{}'));if(Test-Path -LiteralPath $recoveryPath){Remove-Item -LiteralPath $recoveryPath}}
   [Environment]::SetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', (Join-Path $testRoot 'webview'), 'Process')
+  if ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.6.1') {
+    $draftProfile = [Guid]::NewGuid().ToString('N')
+    $draftProfileParent = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'com.subtitletools.desktop'
+    $draftProfilePath = Join-Path $draftProfileParent ('timeline-drafts-qa-' + $draftProfile)
+    Assert-Condition (!(Test-Path -LiteralPath $draftProfilePath)) 'The isolated recovery profile already existed.'
+    [Environment]::SetEnvironmentVariable('SRTTOOLS_QA_DRAFT_PROFILE', $draftProfile, 'Process')
+  }
 
   $source = Join-Path $testRoot '合成 字幕 (🐱).srt'
   $output = Join-Path $testRoot '已导出 (🐱).srt'
@@ -429,6 +438,9 @@ try {
     . (Join-Path $PSScriptRoot 'windows-workflow-steps.ps1')
     if ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.6.0') {
       . (Join-Path $PSScriptRoot 'windows-media-steps.ps1')
+    }
+    if ($draftProfilePath) {
+      . (Join-Path $PSScriptRoot 'windows-recovery-steps.ps1')
     }
     if ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.5.0') {
       . (Join-Path $PSScriptRoot 'windows-timeline-steps.ps1')
@@ -502,6 +514,7 @@ try {
     }
   }
   [Environment]::SetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', $originalWebViewFolder, 'Process')
+  [Environment]::SetEnvironmentVariable('SRTTOOLS_QA_DRAFT_PROFILE', $originalDraftProfile, 'Process')
 
   if ($testRoot -and (Test-Path -LiteralPath $testRoot)) {
     try {
@@ -514,6 +527,18 @@ try {
         })
         $writers.Count -eq 0
       } 'Owned WebView2 profile writers did not exit.' 12000 | Out-Null
+      if ($draftProfilePath -and (Test-Path -LiteralPath $draftProfilePath)) {
+        $profile = Assert-QANoReparse $draftProfilePath
+        Assert-Condition ($profile -eq (Join-Path $draftProfileParent ('timeline-drafts-qa-' + $draftProfile))) 'Recovery profile escaped the owned namespace.'
+        $items = @(Get-ChildItem -LiteralPath $profile -Force)
+        foreach ($item in $items) {
+          Assert-Condition (!$item.PSIsContainer -and !($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -and
+            $item.Name -match '^([a-f0-9]{32}\.(\d+\.[a-f0-9]{32}\.draft|retired)|\.subtitle-tools-\d+-\d+-\d+\.tmp)$') 'An unknown recovery profile entry was preserved.'
+        }
+        foreach ($item in $items) { Remove-Item -LiteralPath $item.FullName }
+        Remove-Item -LiteralPath $profile
+      }
+      if ($report.recoveryChecks) { $report.recoveryChecks.isolatedProfileCleanup = $true }
       Remove-QAWorkspace $testRoot $target $repository 'windows-smoke-'
       $report.cleanupComplete = $true
     } catch {

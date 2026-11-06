@@ -192,7 +192,8 @@ test('desktop cancellation and write errors keep the draft and retry the same by
         invoke: async (command: string, args: { singleSrt?: boolean; key?: string; name?: string; bytes?: number[]; directory?: string | null }) => {
           if (command === 'plugin:event|listen') return 1;
           if (command === 'plugin:event|unlisten') return null;
-          if (command === 'get_local_value') return args.key === 'settings' ? { theme: 'dark' } : null;
+          if (command === 'get_local_value') return args.key === 'settings' ? { theme: 'dark', protectTimelineDrafts: false } : null;
+          if (command === 'list_drafts') return { drafts: [], usedBytes: 0, budgetBytes: 64 * 1024 * 1024, draftLimit: 20 };
           if (command === 'take_external_imports') return { files: [], rejected: 0, duplicates: 0 };
           if (command === 'select_files' && args.singleSrt === true) {
             return [{ name: '本地.srt', bytes, size: bytes.length, path: 'C:\\字幕\\本地.srt' }];

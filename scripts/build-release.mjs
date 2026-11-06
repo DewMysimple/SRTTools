@@ -2,8 +2,8 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
 import {
-  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS, SETUP_ACCEPTANCE_CHECKS,
-  controlledPath, exists, fileRecords, makeStage, requiresTimelineEvidence, requiresMediaEvidence,
+  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS, RECOVERY_SMOKE_CHECKS, SETUP_ACCEPTANCE_CHECKS,
+  controlledPath, exists, fileRecords, makeStage, requiresTimelineEvidence, requiresMediaEvidence, requiresRecoveryEvidence,
   promoteRelease, recordPortableInventory, removeTree, run, sha256, validateStage, verifyRelease, walkFiles,
   withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths, releaseResources,
   validateWindowsQaReport,
@@ -232,6 +232,14 @@ if (args.includes('--check')) {
           info.setupAcceptance.mediaSampleSha256 = setup.mediaSampleSha256;
           info.setupAcceptance.mediaSampleBytes = setup.mediaSampleBytes;
         }
+        if (requiresRecoveryEvidence(baseline.version)) {
+          for (const [target, receipt] of [[info.smoke, smoke], [info.setupAcceptance, setup]]) {
+            target.recoveryChecks = recordedChecks(RECOVERY_SMOKE_CHECKS, receipt.recoveryChecks);
+            target.recoverySourceSha256 = receipt.recoverySourceSha256;
+            target.recoveryExternalSha256 = receipt.recoveryExternalSha256;
+            target.recoveryMeasurements = receipt.recoveryMeasurements;
+          }
+        }
       }
       await writeMetadata(candidate, info);
       await verifyRelease(root, candidate);
@@ -258,8 +266,10 @@ if (args.includes('--check')) {
         workflowChecks: native?.workflowChecks && recordedChecks(WORKFLOW_SMOKE_CHECKS, native.workflowChecks),
         timelineChecks: native?.timelineChecks && recordedChecks(TIMELINE_SMOKE_CHECKS, native.timelineChecks),
         mediaChecks: native?.mediaChecks && recordedChecks(MEDIA_SMOKE_CHECKS, native.mediaChecks),
+        recoveryChecks: native?.recoveryChecks && recordedChecks(RECOVERY_SMOKE_CHECKS, native.recoveryChecks),
         setupChecks: setup?.checks && recordedChecks(SETUP_ACCEPTANCE_CHECKS, setup.checks),
         installedMediaChecks: setup?.mediaChecks && recordedChecks(MEDIA_SMOKE_CHECKS, setup.mediaChecks),
+        installedRecoveryChecks: setup?.recoveryChecks && recordedChecks(RECOVERY_SMOKE_CHECKS, setup.recoveryChecks),
         installedNativeFailure: setup?.installedNativeFailure,
       }, null, 2) + '\n');
       throw error;

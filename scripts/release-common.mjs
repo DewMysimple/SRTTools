@@ -24,6 +24,10 @@ export const MEDIA_SMOKE_CHECKS = Object.freeze([
   'unicodePickerAndMetadata', 'seekAndOverlay', 'playPauseRateVolumeAndEnd', 'validatedLoopAndClear',
   'cancelAndDecodeErrorRetainDraft', 'switchReopenAndRelease', 'sourcesUnchanged',
 ]);
+export const RECOVERY_SMOKE_CHECKS = Object.freeze([
+  'committedOnlyAndVerified', 'exclusiveLockAndRetry', 'forceKillAndDiscovery', 'externalConflictIndependent',
+  'exportAndSourcePreservation', 'missingSourceDeferAndDiscard', 'boundedDraftMeasurements', 'isolatedProfileCleanup',
+]);
 export const SETUP_ACCEPTANCE_CHECKS = Object.freeze([
   'install', 'version', 'licenseResource', 'explorerDefaultOff', 'startup', 'import', 'process', 'export',
   'sourceUnchanged', 'gracefulShutdown', 'existingSettingsAndPresetsReadByApp', 'uninstall',
@@ -40,6 +44,22 @@ export function requiresTimelineEvidence(version) {
 export function requiresMediaEvidence(version) {
   const [major, minor] = version.split('.').map(Number);
   return major > 0 || minor >= 6;
+}
+
+export function requiresRecoveryEvidence(version) {
+  const [major, minor, patch] = version.split('.').map(Number);
+  return major > 0 || minor > 6 || (minor === 6 && patch >= 1);
+}
+
+function validRecoveryMeasurements(measurements) {
+  const positive = number => Number.isSafeInteger(number) && number > 0;
+  return Array.isArray(measurements) && measurements.length === 3
+    && [500, 5_000, 10_000].every((cues, i) => {
+      const row = measurements[i];
+      return row?.cues === cues && [row.openMs, row.restoreMs, row.peakHostWorkingSetBytes, row.snapshotBytes].every(positive)
+        && row.snapshotBytes <= 16 * 1024 * 1024 && /^[0-9A-F]{64}$/u.test(row.sourceSha256)
+        && Array.isArray(row.saveMs) && row.saveMs.length === 3 && row.saveMs.every(positive);
+    });
 }
 
 export function validateWindowsQaReport(report, kind) {
@@ -284,6 +304,21 @@ export async function verifyRelease(root, directory, { requireSmoke = true } = {
         || mediaSampleBytes <= 0 || mediaSampleBytes > 1024 * 1024
         || setup.mediaSampleSha256 !== mediaSampleSha256 || setup.mediaSampleBytes !== mediaSampleBytes) {
         throw new Error('The ZIP and NSIS media receipts have no matching synthetic sample.');
+      }
+    }
+    if (requiresRecoveryEvidence(info.version)) {
+      for (const [label, receipt] of [['ZIP-extracted', info.smoke], ['NSIS installed', setup]]) {
+        if (!RECOVERY_SMOKE_CHECKS.every(key => receipt.recoveryChecks?.[key] === true)
+          || !validRecoveryMeasurements(receipt.recoveryMeasurements)) {
+          throw new Error('This release has no passing ' + label + ' draft recovery evidence.');
+        }
+      }
+      const { recoverySourceSha256, recoveryExternalSha256 } = info.smoke;
+      if (![recoverySourceSha256, recoveryExternalSha256].every(hash => /^[0-9A-F]{64}$/u.test(hash))
+        || recoverySourceSha256 === recoveryExternalSha256 || setup.recoverySourceSha256 !== recoverySourceSha256
+        || setup.recoveryExternalSha256 !== recoveryExternalSha256
+        || setup.recoveryMeasurements.some((row, i) => row.sourceSha256 !== info.smoke.recoveryMeasurements[i].sourceSha256)) {
+        throw new Error('The ZIP and NSIS recovery receipts have no matching synthetic source proof.');
       }
     }
   }

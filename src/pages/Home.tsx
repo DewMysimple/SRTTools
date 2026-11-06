@@ -3,11 +3,13 @@ import { ArrowRight, ArrowUpRight, ShieldCheck, FolderOpen, Plus, Check, Files, 
 import { FileSelector, FileList, PageHeading } from '../components/common';
 import { useAppStore } from '../stores/app-store';
 import { quickToolIds, tools } from '../app/tool-registry';
+import { DraftRecoveryLink } from '../features/timeline/DraftRecoveryPanel';
 
 export function Home() {
   const files = useAppStore(s => s.files); const history = useAppStore(s => s.history);
   return <>
     <PageHeading eyebrow="你的本地字幕工作台" title="让字幕处理，简单一点。" description="从文字清理到格式转换，在这里轻松完成。" action={<span className="privacy-badge"><ShieldCheck size={15} />文件不上传云端</span>} />
+    <DraftRecoveryLink />
     <FileSelector />
     {files.length > 0 && <div className="panel home-selected"><FileList /><div className="button-row end"><Link to="/batch" className="button secondary"><Files size={16} />批量处理</Link><Link to="/tools/detect" className="button primary">先检测一下<ArrowRight size={16} /></Link></div></div>}
     <section className="home-tools"><div className="section-heading"><div><h2>常用工具</h2><p>日常字幕处理，从这些工具开始</p></div><Link to="/tools" className="text-button">查看全部工具<ArrowRight size={15} /></Link></div><div className="tool-grid quick-grid">{quickToolIds.map(id => { const definition = tools.find(t => t.id === id)!; const Icon = definition.icon; return <Link to={`/tools/${id}`} className="tool-card" key={id}><span className={`tool-icon tint-${id}`}><Icon size={22} strokeWidth={1.7} /></span><ArrowUpRight className="card-arrow" size={17} /><h3>{definition.name}</h3><p>{definition.description}</p></Link>; })}</div></section>

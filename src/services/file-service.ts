@@ -10,6 +10,7 @@ export interface ImportedFile {
   error?: string;
   /** Session-only, native-verified source layout. Never persisted in a preset. */
   folderSource?: FolderSource;
+  draftSourceToken?: string;
 }
 
 export interface FolderSource {
@@ -25,6 +26,7 @@ interface NativeImportedFile {
   size: number;
   error?: string;
   folderSource?: FolderSource;
+  draftSourceToken?: string;
 }
 
 const extensions = new Set(['srt', 'vtt', 'ass', 'ssa', 'txt', 'csv']);

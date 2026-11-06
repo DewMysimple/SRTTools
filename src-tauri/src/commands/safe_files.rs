@@ -109,7 +109,7 @@ pub(super) fn replace_local_store(path: &Path, bytes: &[u8]) -> io::Result<()> {
     write_staged(directory, bytes, |temporary| publish(temporary, path, true))
 }
 
-fn write_staged<T>(
+pub(super) fn write_staged<T>(
     directory: &Path,
     bytes: &[u8],
     commit: impl FnOnce(&Path) -> io::Result<T>,
@@ -162,7 +162,7 @@ fn write_staged_cancellable<T>(
 }
 
 #[cfg(windows)]
-fn publish(source: &Path, target: &Path, replace: bool) -> io::Result<()> {
+pub(super) fn publish(source: &Path, target: &Path, replace: bool) -> io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::{
         MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
@@ -183,7 +183,7 @@ fn publish(source: &Path, target: &Path, replace: bool) -> io::Result<()> {
 }
 
 #[cfg(not(windows))]
-fn publish(source: &Path, target: &Path, replace: bool) -> io::Result<()> {
+pub(super) fn publish(source: &Path, target: &Path, replace: bool) -> io::Result<()> {
     if replace {
         fs::rename(source, target)
     } else {

@@ -7,7 +7,7 @@ import { runWorkerRequest } from '../../services/processing-service';
 
 export const timelineEncodings = ['UTF-8', 'UTF-8 BOM', 'UTF-16 LE', 'UTF-16 BE', 'GBK', 'GB18030'];
 
-export async function openTimelineDocument(encoding: string): Promise<ParseResult | null> {
+export async function openTimelineDocument(encoding: string): Promise<(ParseResult & { sourceToken?: string }) | null> {
   const files = await pickFiles('timeline');
   if (!files.length) return null;
   const result = await runWorkerRequest({
@@ -15,7 +15,7 @@ export async function openTimelineDocument(encoding: string): Promise<ParseResul
     options: { encoding, lineEnding: 'LF', outputEncoding: 'UTF-8', fileNamePattern: '{name}_processed' },
   });
   if (!result.document) throw new Error(result.errorMessage ?? '无法读取时间轴字幕。');
-  return { document: result.document, diagnostics: result.diagnostics };
+  return { document: result.document, diagnostics: result.diagnostics, sourceToken: files[0].draftSourceToken };
 }
 
 export function buildTimelineOutput(document: SubtitleDocument, encoding = document.encoding) {

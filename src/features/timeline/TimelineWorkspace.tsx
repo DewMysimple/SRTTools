@@ -1,4 +1,4 @@
-import { useBlocker } from 'react-router-dom';
+import { useBlocker, useLocation } from 'react-router-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Film, FolderOpen, Plus, Redo2, Save, Trash2, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
@@ -9,6 +9,7 @@ import type { ParseDiagnostic, SubtitleCue } from '../../core/models';
 import { formatTimestamp, parseTimestamp } from '../../core/time';
 import { validateDocument } from '../../core/validate';
 import { isDesktop } from '../../services/file-service';
+import { useAppStore } from '../../stores/app-store';
 import { CueIndex } from './core/cue-index';
 import {
   createSession, deleteCues, insertCue, isDirty, markSaved, redo, replaceCues, restoreOriginal, shiftCues, undo, updateCue,
@@ -17,6 +18,8 @@ import {
 import { layoutCues } from './core/interval-layout';
 import { TimelineClock, type LoopRange } from './core/media-timing';
 import { MediaPreview, type MediaPreviewHandle } from './MediaPreview';
+import { DraftRecoveryPanel, shouldOfferDraft, useDraftInventory } from './DraftRecoveryPanel';
+import { DraftRecoveryService, loadRecoverable, sessionFromDraft, type LoadedDraft, type ProtectionStatus } from './draft-recovery-service';
 import { SubtitleList } from './SubtitleList';
 import { openTimelineDocument, saveTimelineDocument, timelineEncodings } from './timeline-document-service';
 import { TimelineView, type TimelineViewHandle } from './TimelineView';
@@ -29,6 +32,7 @@ interface Fields {
 }
 
 type ExitAction = 'open' | 'navigate' | 'close';
+type ExitChoice = 'export' | 'keep' | 'discard';
 const EMPTY_CUES: SubtitleCue[] = [];
 
 function fieldsFor(cue: SubtitleCue): Fields {
@@ -53,6 +57,12 @@ function TimelinePosition({ clock }: { clock: TimelineClock }) {
 }
 
 export default function TimelineWorkspace() {
+  const location = useLocation();
+  const protectDrafts = useAppStore(state => state.settings.protectTimelineDrafts);
+  const { inventory, problem: inventoryError, refresh: refreshDrafts } = useDraftInventory();
+  const [showRecovery, setShowRecovery] = useState(!!location.state?.manageDrafts);
+  const [recovery, setRecovery] = useState<DraftRecoveryService>();
+  const [protection, setProtection] = useState<ProtectionStatus>({ kind: 'idle' });
   const [session, setSession] = useState<EditingSession>();
   const [inputDiagnostics, setInputDiagnostics] = useState<ParseDiagnostic[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -99,10 +109,10 @@ export default function TimelineWorkspace() {
   const fields = draft ?? (cue ? fieldsFor(cue) : null);
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    currentLocation.pathname !== nextLocation.pathname && (dirty || busyRef.current));
+    currentLocation.pathname !== nextLocation.pathname && (dirty || recovery?.needsFlush || busyRef.current));
   const action = exitAction ?? (blocker.state === 'blocked' ? 'navigate' : undefined);
   const closeRequested = useEffectEvent((prevent: () => void) => {
-    if (dirty || busyRef.current) {
+    if (dirty || recovery?.needsFlush || busyRef.current) {
       prevent();
       if (!busyRef.current) setExitAction('close');
     }
@@ -145,6 +155,7 @@ export default function TimelineWorkspace() {
 
   function applySession(next: EditingSession) {
     setSession(next);
+    if (protectDrafts && next.revision !== session?.revision) recovery?.scheduleSave(next);
     const ids = new Set(next.document.cues.map(item => item.id));
     setSelectedIds(current => current.every(id => ids.has(id)) ? current : current.filter(id => ids.has(id)));
     setDiagnosticPage(0);
@@ -183,28 +194,60 @@ export default function TimelineWorkspace() {
     finally { busyRef.current = false; setBusy(false); }
   }
 
-  async function openDocument() {
+  async function installSession(next: EditingSession, diagnostics: ParseDiagnostic[], sourceToken?: string, recovered?: LoadedDraft) {
+    await preview.current?.close();
+    setRecovery(isDesktop() ? new DraftRecoveryService(setProtection, sourceToken, recovered?.draft.draftId) : undefined);
+    setProtection(recovered ? { kind: 'saved', savedAtMs: recovered.savedAtMs } : { kind: 'idle' });
+    setSession(next);
+    setInputDiagnostics(diagnostics);
+    setOutputEncoding(next.document.encoding);
+    const first = next.document.cues[0]?.id;
+    setSelectedIds(first ? [first] : []);
+    selectionAnchor.current = first ?? null;
+    clock.set(0);
+    setDraft(null);
+    setSavedPath('');
+    setShowDiagnostics(false);
+    setDiagnosticPage(0);
+    setShowDiff(false);
+  }
+
+  async function protectBeforeExit() {
+    if (recovery && !await recovery.flush()) throw new Error('草稿保护未完成。请重试，或另存为 SRT 后继续。');
+  }
+
+  async function discardBeforeExit() {
+    if (recovery && !await recovery.resolve(session?.revision)) throw new Error('无法清理当前草稿。请重试。');
+  }
+
+  async function openDocument(choice?: ExitChoice) {
     await runIO(async () => {
+      if (choice !== 'discard') await protectBeforeExit();
       const opened = await openTimelineDocument(inputEncoding);
       if (!opened) return;
-      await preview.current?.close();
-      setSession(createSession(opened.document));
-      setInputDiagnostics(opened.diagnostics);
-      setOutputEncoding(opened.document.encoding);
-      setSelectedIds(opened.document.cues.length ? [opened.document.cues[0].id] : []);
-      selectionAnchor.current = opened.document.cues[0]?.id ?? null;
-      clock.set(0);
-      setDraft(null);
-      setSavedPath('');
-      setShowDiagnostics(false);
-      setDiagnosticPage(0);
-      setShowDiff(false);
+      if (choice === 'discard') await discardBeforeExit();
+      await installSession(createSession(opened.document), opened.diagnostics, opened.sourceToken);
+      const local = await refreshDrafts();
+      if (local?.drafts.some(row => shouldOfferDraft(row, opened.document.sourcePath))) setShowRecovery(true);
+    });
+  }
+
+  async function restoreDraft(expected: LoadedDraft) {
+    if (dirty) return false;
+    return runIO(async () => {
+      await protectBeforeExit();
+      const loaded = await loadRecoverable(expected.draft.draftId);
+      if (loaded.headRevision !== expected.headRevision || loaded.sourceStatus !== expected.sourceStatus ||
+        loaded.draft.revision !== expected.draft.revision || loaded.savedAtMs !== expected.savedAtMs) return loaded;
+      await installSession(sessionFromDraft(loaded), [], loaded.sourceToken ?? undefined, loaded);
+      setShowRecovery(false);
+      return true;
     });
   }
 
   function requestOpen() {
     if (busyRef.current) return;
-    if (dirty) setExitAction('open');
+    if (dirty || recovery?.needsFlush) setExitAction('open');
     else void openDocument();
   }
 
@@ -212,11 +255,14 @@ export default function TimelineWorkspace() {
     if (!session || unrecoverable) return false;
     return runIO(async () => {
       const current = applyFields(session);
+      await recovery?.flush();
       const path = await saveTimelineDocument(current.document, outputEncoding);
       if (!path) return false;
       setSession(markSaved(current));
       setSavedPath(path);
-      return true;
+      const resolved = await recovery?.resolve(current.revision);
+      if (showRecovery) await refreshDrafts();
+      return resolved !== false;
     });
   }
 
@@ -226,15 +272,18 @@ export default function TimelineWorkspace() {
     setExitAction(undefined);
   }
 
-  async function continueExit(save: boolean) {
-    if (busyRef.current || (save && !await saveDocument())) return;
+  async function continueExit(choice: ExitChoice) {
+    if (busyRef.current || (choice === 'export' && !await saveDocument())) return;
     if (action === 'open') {
       setExitAction(undefined);
-      await openDocument();
-    } else if (action === 'close') {
-      await runIO(async () => getCurrentWindow().destroy());
-    } else if (blocker.state === 'blocked') {
-      blocker.proceed();
+      await openDocument(choice);
+    } else {
+      await runIO(async () => {
+        if (choice === 'keep') await protectBeforeExit();
+        if (choice === 'discard') await discardBeforeExit();
+        if (action === 'close') await getCurrentWindow().destroy();
+        else if (blocker.state === 'blocked') blocker.proceed();
+      });
     }
   }
 
@@ -276,6 +325,7 @@ export default function TimelineWorkspace() {
 
   const controlsDisabled = busy || unrecoverable || !!draft;
   const diagStart = diagnosticPage * 20;
+  const recoverableCount = inventory?.drafts.filter(row => row.health !== 'retired' && row.draftId !== recovery?.activeId).length ?? 0;
   const seek = (timeMs: number) => { if (!preview.current?.seek(timeMs)) clock.set(timeMs); };
   return <section className="timeline-workspace" aria-label="字幕校时工作区">
     <div className="timeline-heading">
@@ -294,6 +344,11 @@ export default function TimelineWorkspace() {
       <label>读取编码 <select value={inputEncoding} disabled={busy} onChange={event => setInputEncoding(event.target.value)}>
         <option value="auto">自动检测</option>{timelineEncodings.map(encoding => <option key={encoding}>{encoding}</option>)}
       </select></label>
+      {isDesktop() && <button type="button" className="button secondary small" disabled={busy} aria-expanded={showRecovery}
+        onClick={() => {
+          if (!showRecovery) void refreshDrafts();
+          setShowRecovery(value => !value);
+        }}>本地草稿{recoverableCount > 0 && '（' + recoverableCount + '）'}</button>}
       {session && <>
         <label>导出编码 <select value={outputEncoding} disabled={busy} onChange={event => setOutputEncoding(event.target.value)}>
           {timelineEncodings.map(encoding => <option key={encoding}>{encoding}</option>)}
@@ -305,6 +360,21 @@ export default function TimelineWorkspace() {
     </div>
     {busy && <p className="timeline-inline-note" role="status">正在读取或保存字幕…</p>}
     {error && <div role="alert"><NoticeBox kind="error">{error}</NoticeBox></div>}
+    {showRecovery && <DraftRecoveryPanel inventory={inventory} problem={inventoryError} refresh={refreshDrafts} document={document}
+      activeId={recovery?.activeId} dirty={dirty} busy={busy} onRecover={restoreDraft} />}
+    {recovery && (dirty || protection.kind !== 'idle') && <div className="timeline-protection" role="status">
+      {protection.kind === 'error' ? <>
+        <span className="timeline-warning">草稿保护失败 · {protection.message}</span>
+        <button type="button" className="button secondary small" disabled={busy} onClick={() => void recovery.flush()}>重试草稿保护</button>
+      </> : protection.kind === 'cleanup' ? <span>草稿已处理，文件待清理。可在本地草稿中重试清理。</span>
+        : !protectDrafts ? <span className="timeline-warning">自动草稿保护已关闭，请另存为 SRT。</span>
+        : protection.kind === 'saving' ? <span>草稿保护中…</span>
+        : protection.kind === 'saved' ? <span>草稿已保护 · {new Date(protection.savedAtMs).toLocaleTimeString('zh-CN')}
+          {protection.overSoftLimit && ' · 超过 8 MiB，建议及时另存为'}</span>
+        : null}
+      {draft && <span>表单编辑待应用。</span>}
+      {session?.recovered && <span>已恢复草稿 · 尚未导出</span>}
+    </div>}
     {unrecoverable && <NoticeBox kind="error">文件包含无法恢复的 SRT 结构。请修正源文件后重新打开。下方可查看已识别的字幕和诊断。</NoticeBox>}
     <div className={`timeline-editor${mediaPresent ? ' media-enabled' : ''}${session ? '' : ' no-document'}`}
       style={{ '--list-fraction': `${leftWidth}fr`, '--preview-fraction': `${100 - leftWidth}fr` } as CSSProperties}>
@@ -383,13 +453,16 @@ export default function TimelineWorkspace() {
       if (session) applySession(restoreOriginal(session));
       setDraft(null);
     }}>恢复到打开字幕时的内容。已导出的文件会保留。</ActionDialog>}
-    {action && <Modal title={dirty ? '有未保存修改' : '正在处理字幕文件'} onCancel={cancelExit}>
-      <p>{dirty ? '可以另存为新的 SRT，再继续当前操作。' : '请等待文件操作结束。'}</p>
+    {action && <Modal title={dirty ? '有未保存修改' : '本地草稿待处理'} onCancel={cancelExit}>
+      <p>可以另存为新的 SRT。放弃修改会删除当前会话的恢复草稿。</p>
+      {draft && recovery && protectDrafts && <p>保留草稿仅保留已应用的编辑，当前表单中未应用的内容会丢失。</p>}
       {error && <p className="field-error" role="alert">{error}</p>}
       <div className="button-row end">
         <button type="button" className="button secondary" disabled={busy} onClick={cancelExit}>取消</button>
-        <button type="button" className="button secondary" disabled={busy} onClick={() => void continueExit(false)}>放弃修改</button>
-        <button type="button" className="button primary" disabled={busy || unrecoverable} onClick={() => void continueExit(true)}>保存并继续</button>
+        <button type="button" className="button secondary" disabled={busy} onClick={() => void continueExit('discard')}>放弃修改</button>
+        {recovery && protectDrafts && !unrecoverable && <button type="button" className="button secondary" disabled={busy || !session || !(isDirty(session) || recovery.needsFlush)}
+          onClick={() => void continueExit('keep')}>保留草稿并继续</button>}
+        <button type="button" className="button primary" disabled={busy || unrecoverable} onClick={() => void continueExit('export')}>保存并继续</button>
       </div>
     </Modal>}
   </section>;

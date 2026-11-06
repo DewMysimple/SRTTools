@@ -1,3 +1,4 @@
+pub mod drafts;
 pub mod explorer;
 pub mod folder_export;
 pub mod folder_import;
@@ -197,6 +198,8 @@ pub struct ImportedFile {
     error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     folder_source: Option<FolderSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    draft_source_token: Option<String>,
 }
 
 fn ensure_main(window: &WebviewWindow) -> Result<(), String> {
@@ -219,6 +222,7 @@ fn import_one(path: &Path, access: &FileAccess, remaining_bytes: u64) -> Importe
         size: 0,
         error: None,
         folder_source: None,
+        draft_source_token: None,
     };
     let result = (|| {
         let canonical = fs::canonicalize(path).map_err(|e| format!("无法读取文件：{e}"))?;
@@ -332,7 +336,15 @@ pub async fn select_files(
         }
         let access = app.state::<FileAccess>();
         access.approve_dropped(&paths);
-        import_many(&paths, &access)
+        let mut files = import_many(&paths, &access)?;
+        if single_srt {
+            if let Some(file) = files.first_mut().filter(|file| file.error.is_none()) {
+                file.draft_source_token = Some(app.state::<drafts::DraftSources>().remember(
+                    drafts::SourceFingerprint::from_import(&file.path, &file.bytes),
+                )?);
+            }
+        }
+        Ok(files)
     })
     .await
     .map_err(|e| format!("文件选择任务未能完成：{e}"))?

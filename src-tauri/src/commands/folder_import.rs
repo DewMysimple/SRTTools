@@ -599,6 +599,7 @@ impl<'a> Scanner<'a> {
             size,
             error: None,
             folder_source: Some(folder_source),
+            draft_source_token: None,
         };
         self.summary.added += 1;
         self.added_bytes += size;

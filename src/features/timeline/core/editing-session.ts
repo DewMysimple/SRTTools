@@ -21,29 +21,36 @@ export interface EditingSession {
   saved: readonly SubtitleCue[];
   past: readonly Edit[];
   future: readonly Edit[];
+  revision: number;
+  recovered?: boolean;
 }
 
 const HISTORY_LIMIT = 100;
 
 export function createSession(document: SubtitleDocument): EditingSession {
-  return { document, original: document, saved: document.cues, past: [], future: [] };
+  return { document, original: document, saved: document.cues, past: [], future: [], revision: 0 };
+}
+
+export function recoverSession(original: SubtitleDocument, document: SubtitleDocument, revision: number): EditingSession {
+  return { ...createSession(original), document, revision, recovered: true };
 }
 
 function sameContents(a: SubtitleCue, b: SubtitleCue): boolean {
   return a === b || (a.startMs === b.startMs && a.endMs === b.endMs && a.text === b.text);
 }
 
-export function isDirty({ document, saved }: EditingSession): boolean {
-  return document.cues !== saved &&
+export function isDirty({ document, saved, recovered }: EditingSession): boolean {
+  return !!recovered || document.cues !== saved &&
     (document.cues.length !== saved.length || document.cues.some((cue, i) => !sameContents(cue, saved[i])));
 }
 
 export function markSaved(session: EditingSession): EditingSession {
-  return { ...session, saved: session.document.cues };
+  return { ...session, saved: session.document.cues, recovered: false };
 }
 
 export function restoreOriginal(session: EditingSession): EditingSession {
-  return { ...session, document: session.original, past: [], future: [] };
+  if (session.document === session.original) return session;
+  return { ...session, document: session.original, past: [], future: [], revision: session.revision + 1 };
 }
 
 function apply(document: SubtitleDocument, edit: Edit, side: 'before' | 'after'): SubtitleDocument {
@@ -69,6 +76,7 @@ function commit(session: EditingSession, edit: Edit): EditingSession {
     document: apply(session.document, edit, 'after'),
     past: [...session.past.slice(1 - HISTORY_LIMIT), edit],
     future: [],
+    revision: session.revision + 1,
   };
 }
 
@@ -76,7 +84,7 @@ export function undo(session: EditingSession): EditingSession {
   const edit = session.past.at(-1);
   return edit ? {
     ...session, document: apply(session.document, edit, 'before'),
-    past: session.past.slice(0, -1), future: [...session.future, edit],
+    past: session.past.slice(0, -1), future: [...session.future, edit], revision: session.revision + 1,
   } : session;
 }
 
@@ -84,7 +92,7 @@ export function redo(session: EditingSession): EditingSession {
   const edit = session.future.at(-1);
   return edit ? {
     ...session, document: apply(session.document, edit, 'after'),
-    past: [...session.past, edit], future: session.future.slice(0, -1),
+    past: [...session.past, edit], future: session.future.slice(0, -1), revision: session.revision + 1,
   } : session;
 }
 

@@ -105,7 +105,7 @@ fn media_type(path: &Path) -> Option<&'static str> {
 }
 
 #[cfg(windows)]
-fn local_path(path: &Path) -> bool {
+pub(super) fn local_path(path: &Path) -> bool {
     use std::{
         os::windows::ffi::OsStrExt,
         path::{Component, Prefix},

@@ -184,6 +184,7 @@ fn read_external(path: &Path, remaining: u64, access: &FileAccess) -> Result<Imp
         bytes,
         error: None,
         folder_source: access.folder_source(&canonical),
+        draft_source_token: None,
     })
 }
 

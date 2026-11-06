@@ -89,7 +89,7 @@ fn same(left: &str, right: &str) -> bool {
 }
 
 #[cfg(windows)]
-fn directory_sentinel(directory: &Path) -> Result<File, String> {
+pub(super) fn directory_sentinel(directory: &Path) -> Result<File, String> {
     use std::os::windows::fs::OpenOptionsExt;
     use windows_sys::Win32::Storage::FileSystem::{
         DELETE, FILE_ATTRIBUTE_HIDDEN, FILE_FLAG_DELETE_ON_CLOSE, FILE_GENERIC_READ,

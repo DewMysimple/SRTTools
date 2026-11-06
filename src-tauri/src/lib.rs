@@ -21,6 +21,7 @@ pub fn run() {
         .manage(commands::FolderImports::default())
         .manage(commands::FolderExports::default())
         .manage(commands::media::MediaAccess::default())
+        .manage(commands::drafts::DraftSources::default())
         .register_asynchronous_uri_scheme_protocol(commands::media::SCHEME, commands::media::handle)
         .plugin(tauri_plugin_dialog::init())
         // Store remains Rust-only. No general-purpose filesystem or store IPC is exposed.
@@ -68,6 +69,11 @@ pub fn run() {
             commands::read_dropped_files,
             commands::media::select_video,
             commands::media::release_video,
+            commands::drafts::save_draft,
+            commands::drafts::list_drafts,
+            commands::drafts::load_draft,
+            commands::drafts::discard_draft,
+            commands::drafts::prune_drafts,
             commands::select_directory,
             commands::save_output,
             commands::open_output_directory,

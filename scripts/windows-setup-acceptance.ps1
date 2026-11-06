@@ -221,6 +221,15 @@ try {
       $report.mediaSampleSha256=$smoke.mediaSampleSha256
       $report.mediaSampleBytes=$smoke.mediaSampleBytes
     }
+    if ([version]$ExpectedVersion -ge [version]'0.6.1') {
+      foreach ($name in @('committedOnlyAndVerified','exclusiveLockAndRetry','forceKillAndDiscovery','externalConflictIndependent','exportAndSourcePreservation','missingSourceDeferAndDiscard','boundedDraftMeasurements','isolatedProfileCleanup')) {
+        Assert-Condition ($smoke.recoveryChecks.$name -is [bool] -and $smoke.recoveryChecks.$name) 'A required installed recovery proof was missing.'
+      }
+      $report.recoveryChecks=$smoke.recoveryChecks
+      $report.recoverySourceSha256=$smoke.recoverySourceSha256
+      $report.recoveryExternalSha256=$smoke.recoveryExternalSha256
+      $report.recoveryMeasurements=$smoke.recoveryMeasurements
+    }
     Assert-Condition ($smoke.existingSettingsAndPresetsReadBefore -eq $true -and $smoke.existingSettingsAndPresetsReadAfter -eq $true) 'The installed app did not actually preserve/read existing settings and both preset kinds.'
     $report.checks.existingSettingsAndPresetsReadByApp=$true
   }

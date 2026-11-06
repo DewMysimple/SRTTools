@@ -39,7 +39,9 @@ async function openWorkspace(page: Page, info: TestInfo, subtitles = source) {
         convertFileSrc: (token: string) => token === '3' ? '/broken-media.mp4' : `/synthetic-media.webm?grant=${token}`,
         invoke: async (command: string, args: { token?: string; name?: string }) => {
           if (command === 'plugin:event|listen') return 1;
-          if (command === 'plugin:event|unlisten' || command === 'get_local_value') return null;
+          if (command === 'plugin:event|unlisten') return null;
+          if (command === 'get_local_value') return { protectTimelineDrafts: false };
+          if (command === 'list_drafts') return { drafts: [], usedBytes: 0, budgetBytes: 64 * 1024 * 1024, draftLimit: 20 };
           if (command === 'take_external_imports') return { files: [], rejected: 0, duplicates: 0 };
           if (command === 'select_files') return [{ name: '媒体字幕.srt', bytes, size: bytes.length }];
           if (command === 'select_video') {
