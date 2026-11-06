@@ -120,6 +120,20 @@ public static class SubtitleSmokeNative {
   }, IntPtr.Zero);
   return windows.ToArray();
  }
+ public static IntPtr FindDialog(uint processId) {
+  IntPtr result = IntPtr.Zero;
+  EnumWindows(delegate(IntPtr handle, IntPtr parameter) {
+   uint ownerProcess;
+   GetWindowThreadProcessId(handle, out ownerProcess);
+   if (ownerProcess != processId || !IsWindowVisible(handle)) return true;
+   var name = new System.Text.StringBuilder(32);
+   GetClassName(handle, name, name.Capacity);
+   if (name.ToString() != "#32770") return true;
+   result = handle;
+   return false;
+  }, IntPtr.Zero);
+  return result;
+ }
 }
 "@
 
@@ -221,7 +235,12 @@ function Find-Dialog {
   $condition = New-Object System.Windows.Automation.AndCondition(
     (Condition $element::ProcessIdProperty $process.Id),
     (Condition $element::ClassNameProperty '#32770'))
-  $desktop.FindFirst($scope::Children, $condition)
+  $dialog = $desktop.FindFirst($scope::Children, $condition)
+  if ($dialog) { return $dialog }
+  # A native picker with an explicit parent can be absent from the desktop UIA
+  # children. Inspect visible Win32 dialogs owned by this exact QA process.
+  $handle = [SubtitleSmokeNative]::FindDialog([uint32]$process.Id)
+  if ($handle -ne [IntPtr]::Zero) { $element::FromHandle($handle) }
 }
 
 function Get-Dialog([string] $Title) {
