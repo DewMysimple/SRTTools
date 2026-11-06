@@ -20,11 +20,23 @@ pub fn run() {
         .manage(commands::FileAccess::default())
         .manage(commands::FolderImports::default())
         .manage(commands::FolderExports::default())
+        .manage(commands::media::MediaAccess::default())
+        .register_asynchronous_uri_scheme_protocol(commands::media::SCHEME, commands::media::handle)
         .plugin(tauri_plugin_dialog::init())
         // Store remains Rust-only. No general-purpose filesystem or store IPC is exposed.
         .plugin(tauri_plugin_store::Builder::default().build())
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Started
+            {
+                webview.state::<commands::media::MediaAccess>().clear();
+            }
+        })
         .on_window_event(|window, event| {
             if window.label() == "main" {
+                if matches!(event, WindowEvent::Destroyed) {
+                    window.state::<commands::media::MediaAccess>().clear();
+                }
                 if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
                     let app = window.app_handle().clone();
                     let label = window.label().to_owned();
@@ -54,6 +66,8 @@ pub fn run() {
             commands::explorer::set_explorer_integration,
             commands::explorer::take_external_imports,
             commands::read_dropped_files,
+            commands::media::select_video,
+            commands::media::release_video,
             commands::select_directory,
             commands::save_output,
             commands::open_output_directory,

@@ -1,6 +1,7 @@
 pub mod explorer;
 pub mod folder_export;
 pub mod folder_import;
+pub mod media;
 pub mod preset_storage;
 mod safe_files;
 pub use folder_export::FolderExports;

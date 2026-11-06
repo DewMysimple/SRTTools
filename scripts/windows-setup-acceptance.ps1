@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory)][string] $SetupPath,
   [Parameter(Mandatory)][string] $ReportPath,
   [Parameter(Mandatory)][string] $ExpectedVersion,
-  [ValidateSet('smoke','workflow')][string] $SmokeScenario = 'workflow',
+  [ValidateSet('smoke','workflow','media-spike')][string] $SmokeScenario = 'workflow',
   [ValidatePattern('^$|^[a-fA-F0-9]{64}$')][string] $ExpectedSha256 = '',
   [string] $PortableDirectory
 )
@@ -198,7 +198,8 @@ try {
   Start-SetupJob (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') $childArgs 'smoke' 900000
   $smoke=[IO.File]::ReadAllText($childReport)|ConvertFrom-Json
   Assert-Condition ($smoke.status -eq 'PASS' -and $smoke.executableSha256 -eq $report.installedExecutableSha256 -and $smoke.scenario -eq $SmokeScenario) 'Installed native proof did not match the actual payload.'
-  foreach ($name in @('startup','import','process','export')) { Assert-Condition ($smoke.checks.$name) 'Required installed native check was missing.'; $report.checks[$name]=$true }
+  $expectedNativeChecks = if ($SmokeScenario -eq 'media-spike') { @('startup','import','process') } else { @('startup','import','process','export') }
+  foreach ($name in $expectedNativeChecks) { Assert-Condition ($smoke.checks.$name) 'Required installed native check was missing.'; $report.checks[$name]=$true }
   Assert-Condition ($smoke.originalPreserved -and $smoke.shutdown -and $smoke.storeRestored -and $smoke.cleanupComplete) 'Installed native lifecycle proof was incomplete.'
   $report.checks.sourceUnchanged=[bool]$smoke.originalPreserved; $report.checks.gracefulShutdown=[bool]$smoke.shutdown
   $report.preservedSourceCount=$smoke.preservedSourceCount
@@ -215,6 +216,9 @@ try {
     }
     Assert-Condition ($smoke.existingSettingsAndPresetsReadBefore -eq $true -and $smoke.existingSettingsAndPresetsReadAfter -eq $true) 'The installed app did not actually preserve/read existing settings and both preset kinds.'
     $report.checks.existingSettingsAndPresetsReadByApp=$true
+  } elseif ($SmokeScenario -eq 'media-spike') {
+    Assert-Condition ($smoke.mediaSpike.status -eq 'PASS') 'The installed WebView2 media proof was incomplete.'
+    $report.mediaSpike=$smoke.mediaSpike
   }
   $report.environment=$smoke.environment
   Assert-Condition ((Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash -eq $seedHash) 'Application acceptance failed to preserve the existing settings and presets.'

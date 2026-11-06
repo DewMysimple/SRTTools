@@ -2,7 +2,7 @@
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
   [string] $ExpectedVersion,
-  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline')][string] $Scenario = 'smoke',
+  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline', 'media-spike')][string] $Scenario = 'smoke',
   [string] $NsisPath,
   [switch] $AllowUnavailableContextMenu,
   [switch] $PreserveExistingStore,
@@ -139,6 +139,7 @@ $mutex = [Threading.Mutex]::new($false, 'Local\SubtitleToolsReleaseSmoke')
 $hasMutex = $false
 $canWriteReport = $false
 $originalWebViewFolder = [Environment]::GetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', 'Process')
+$originalWebViewArguments = [Environment]::GetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', 'Process')
 $report = [ordered]@{
   schemaVersion = 1
   producer = 'srttools-windows-smoke'
@@ -373,6 +374,12 @@ try {
   $state=$candidate
   if(!$PreserveExistingStore){Write-Synced $storePath ($utf8.GetBytes('{}'));if(Test-Path -LiteralPath $recoveryPath){Remove-Item -LiteralPath $recoveryPath}}
   [Environment]::SetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', (Join-Path $testRoot 'webview'), 'Process')
+  if ($Scenario -eq 'media-spike') {
+    $reservation = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+    $reservation.Start()
+    try { $mediaProbePort = $reservation.LocalEndpoint.Port } finally { $reservation.Stop() }
+    [Environment]::SetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', ('--remote-debugging-address=127.0.0.1 --remote-debugging-port=' + $mediaProbePort), 'Process')
+  }
 
   $source = Join-Path $testRoot '合成 字幕 (🐱).srt'
   $output = Join-Path $testRoot '已导出 (🐱).srt'
@@ -413,6 +420,8 @@ try {
     }
   } elseif ($Scenario -eq 'timeline') {
     . (Join-Path $PSScriptRoot 'windows-timeline-steps.ps1')
+  } elseif ($Scenario -eq 'media-spike') {
+    . (Join-Path $PSScriptRoot 'windows-media-spike-steps.ps1')
   } elseif ($Scenario -eq 'closure') {
     . (Join-Path $PSScriptRoot 'windows-closure-steps.ps1')
   } else {
@@ -478,6 +487,7 @@ try {
     }
   }
   [Environment]::SetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', $originalWebViewFolder, 'Process')
+  [Environment]::SetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', $originalWebViewArguments, 'Process')
   if ($hasMutex) { $mutex.ReleaseMutex() }
   if($mutex){$mutex.Dispose()}
 
@@ -496,7 +506,7 @@ try {
   }
   if ($canWriteReport) {
     [IO.Directory]::CreateDirectory((Split-Path -Parent $ReportPath)) | Out-Null
-    [IO.File]::WriteAllText($ReportPath, ($report | ConvertTo-Json -Depth 4), $utf8)
+    [IO.File]::WriteAllText($ReportPath, ($report | ConvertTo-Json -Depth 8), $utf8)
   }
 }
 if ($report.status -ne 'PASS') { exit 1 }

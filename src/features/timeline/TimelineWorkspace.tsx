@@ -15,6 +15,7 @@ import {
   type EditingSession,
 } from './core/editing-session';
 import { layoutCues } from './core/interval-layout';
+import { MediaProbe } from './MediaProbe';
 import { SubtitleList } from './SubtitleList';
 import { openTimelineDocument, saveTimelineDocument, timelineEncodings } from './timeline-document-service';
 import { TimelineView, type TimelineViewHandle } from './TimelineView';
@@ -284,6 +285,7 @@ export default function TimelineWorkspace() {
           onClick={() => setRestoring(true)}>恢复原稿</button>
       </>}
     </div>
+    <MediaProbe />
     {busy && <p className="timeline-inline-note" role="status">正在读取或保存字幕…</p>}
     {error && <div role="alert"><NoticeBox kind="error">{error}</NoticeBox></div>}
     {unrecoverable && <NoticeBox kind="error">文件包含无法恢复的 SRT 结构。请修正源文件后重新打开。下方可查看已识别的字幕和诊断。</NoticeBox>}
