@@ -499,15 +499,29 @@ try {
     }
   }
   [Environment]::SetEnvironmentVariable('WEBVIEW2_USER_DATA_FOLDER', $originalWebViewFolder, 'Process')
-  if ($hasMutex) { $mutex.ReleaseMutex() }
-  if($mutex){$mutex.Dispose()}
 
   if ($testRoot -and (Test-Path -LiteralPath $testRoot)) {
     try {
+      # The host window can exit before the media decoder and profile writers.
+      # Keep the QA lease until this run's isolated WebView2 processes are gone.
+      $profilePath = Join-Path $testRoot 'webview'
+      Wait-Condition {
+        $writers = @(Get-CimInstance Win32_Process -Filter "name='msedgewebview2.exe'" | Where-Object {
+          $_.CommandLine -and $_.CommandLine.IndexOf($profilePath,[StringComparison]::OrdinalIgnoreCase) -ge 0
+        })
+        $writers.Count -eq 0
+      } 'Owned WebView2 profile writers did not exit.' 12000 | Out-Null
       Remove-QAWorkspace $testRoot $target $repository 'windows-smoke-'
       $report.cleanupComplete = $true
-    } catch { $report.cleanupComplete = $false }
+    } catch {
+      $report.cleanupComplete = $false
+      $report.cleanupFailureKind = $_.Exception.GetBaseException().GetType().Name
+      $reason = $_.Exception.Message
+      $report.cleanupFailureReason = if ($reason -match '(?i)([a-z]:[\\/]|\\\\)') { 'Controlled cleanup did not complete.' } else { $reason }
+    }
   }
+  if ($hasMutex) { $mutex.ReleaseMutex() }
+  if($mutex){$mutex.Dispose()}
   if (!$report.failureStage -and $report.originalPreserved -and $report.shutdown -and $report.storeRestored) {
     if ($report.cleanupComplete) { $report.status = if ($report.contextMenuStatus -eq 'BLOCKED') { 'PARTIAL' } else { 'PASS' } }
     else {
