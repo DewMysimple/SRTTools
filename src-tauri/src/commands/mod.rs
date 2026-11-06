@@ -289,19 +289,28 @@ fn import_many(paths: &[PathBuf], access: &FileAccess) -> Result<Vec<ImportedFil
 pub async fn select_files(
     app: AppHandle,
     window: WebviewWindow,
+    single_srt: Option<bool>,
 ) -> Result<Vec<ImportedFile>, String> {
     ensure_main(&window)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let Some(selected) = app
-            .dialog()
-            .file()
-            .set_title("选择字幕文件")
-            .add_filter(
-                "字幕及文本文件",
-                &["srt", "vtt", "ass", "ssa", "txt", "csv"],
-            )
-            .blocking_pick_files()
-        else {
+        let single_srt = single_srt.unwrap_or(false);
+        let dialog = app.dialog().file();
+        let selected = if single_srt {
+            dialog
+                .set_title("选择时间轴字幕")
+                .add_filter("SRT 字幕", &["srt"])
+                .blocking_pick_file()
+                .map(|file| vec![file])
+        } else {
+            dialog
+                .set_title("选择字幕文件")
+                .add_filter(
+                    "字幕及文本文件",
+                    &["srt", "vtt", "ass", "ssa", "txt", "csv"],
+                )
+                .blocking_pick_files()
+        };
+        let Some(selected) = selected else {
             return Ok(Vec::new());
         };
         let paths: Vec<_> = selected
@@ -311,6 +320,15 @@ pub async fn select_files(
                     .map_err(|e| format!("无法识别所选路径：{e}"))
             })
             .collect::<Result<_, _>>()?;
+        if single_srt
+            && !paths
+                .first()
+                .and_then(|path| path.extension())
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("srt"))
+        {
+            return Err("时间轴仅编辑 SRT。其他格式请先在工具箱中显式转换为 SRT。".into());
+        }
         let access = app.state::<FileAccess>();
         access.approve_dropped(&paths);
         import_many(&paths, &access)

@@ -207,6 +207,12 @@ try {
       Assert-Condition ($smoke.workflowChecks.$name -is [bool] -and $smoke.workflowChecks.$name) 'A required installed workflow proof was missing.'
     }
     $report.workflowChecks=$smoke.workflowChecks
+    if ([version]$ExpectedVersion -ge [version]'0.5.0') {
+      foreach ($name in @('pickerAndSelection','dragAndUndoRedo','switchCancelRetainsDraft','closeCancelRetainsDraft','exactEditAndBytes','closeSaveAndExit','sourceUnchanged')) {
+        Assert-Condition ($smoke.timelineChecks.$name -is [bool] -and $smoke.timelineChecks.$name) 'A required installed timeline proof was missing.'
+      }
+      $report.timelineChecks=$smoke.timelineChecks
+    }
     Assert-Condition ($smoke.existingSettingsAndPresetsReadBefore -eq $true -and $smoke.existingSettingsAndPresetsReadAfter -eq $true) 'The installed app did not actually preserve/read existing settings and both preset kinds.'
     $report.checks.existingSettingsAndPresetsReadByApp=$true
   }

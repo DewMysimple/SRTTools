@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {
-  MANAGED_BY, controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
+  MANAGED_BY, SETUP_ACCEPTANCE_CHECKS, TIMELINE_SMOKE_CHECKS, controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
   sha256, sourceFingerprint, run, validateStage, verifyRelease, walkFiles, withReleaseLock, writeMetadata, zipPortable, assertIdlePaths, releaseResources,
   validateWindowsQaReport,
 } from './release-common.mjs';
@@ -133,6 +133,38 @@ test('v0.4 native evidence requires the workflow scenario and every real workflo
   info.smoke.originalPreserved = false;
   await writeMetadata(directory, info);
   await assert.rejects(verifyRelease(root, directory), /native/u);
+});
+
+test('v0.5 promotion requires both timeline receipts and a matching installer hash while preserving v0.4', async t => {
+  const root = await fixture(t);
+  const final = path.join(root, 'release-output');
+  const smoke = { scenario: 'workflow', workflowChecks };
+  await release(root, final, 'last qualified release', { version: '0.4.0', smoke });
+  const original = await fileRecords(root, final, await walkFiles(root, final));
+  const stage = await makeStage(root);
+  const candidate = path.join(stage, 'candidate');
+  const info = await release(root, candidate, 'timeline release', { version: '0.5.0', smoke });
+  await assert.rejects(promoteRelease(root, candidate, stage), /native timeline/u);
+  const timelineChecks = Object.fromEntries(TIMELINE_SMOKE_CHECKS.map(key => [key, true]));
+  info.smoke.timelineChecks = timelineChecks;
+  await writeMetadata(candidate, info);
+  await assert.rejects(promoteRelease(root, candidate, stage), /NSIS installation/u);
+  info.setupAcceptance = {
+    schemaVersion: 1, producer: 'srttools-setup-acceptance-v1', status: 'PASS', scenario: 'workflow',
+    version: '0.5.0', installedVersion: '0.5.0', setupSha256: '0'.repeat(64), installedExecutableSha256: '1'.repeat(64),
+    checks: Object.fromEntries(SETUP_ACCEPTANCE_CHECKS.map(key => [key, true])), workflowChecks, timelineChecks,
+  };
+  await writeMetadata(candidate, info);
+  await assert.rejects(promoteRelease(root, candidate, stage), /NSIS installation/u);
+  assert.deepEqual(await fileRecords(root, final, await walkFiles(root, final)), original);
+  info.setupAcceptance.setupSha256 = await sha256(path.join(candidate, 'SRTTools-Setup.exe'));
+  info.setupAcceptance.timelineChecks = { ...timelineChecks, closeSaveAndExit: 'true' };
+  await writeMetadata(candidate, info);
+  await assert.rejects(verifyRelease(root, candidate), /NSIS installation/u);
+  info.setupAcceptance.timelineChecks = timelineChecks;
+  await writeMetadata(candidate, info);
+  await promoteRelease(root, candidate, stage);
+  assert.equal((await verifyRelease(root, final)).version, '0.5.0');
 });
 
 test('an incomplete workflow candidate preserves the byte-identical v0.3 last success until full verification', async t => {

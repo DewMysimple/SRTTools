@@ -36,6 +36,8 @@ npm run disk:report
 
 固定Setup可复用 `windows-setup-acceptance.ps1 -SetupPath <绝对路径> -ReportPath <项目target下报告> -ExpectedVersion 0.4.0 -SmokeScenario workflow` 验收。驱动在受控临时安装目录运行，持久备份真实用户Store与专属注册键，seed既有设置及两类合法预设，核对安装/完整子流程/卸载全过程逐字节保留，再恢复真实用户原值；应用须真实读取并应用既有工具/流程预设，完成流程与重启后再读；它不清空用户数据以换取干净启动。Job/父子lease和持久owner记录确认写者全部停止后才恢复，注册表复原覆盖值及Owner/Group/DACL；PS5备份严格校验shape/depth/完整JSON往返，不声称SACL覆盖。开发包dirty验收不等于正式clean包，报告分别记录。
 
+0.5.0 起，在原工作流冒烟之后运行真实 SRT 时间轴检查，包括物理拖动、单次撤销/重做、精确编辑、导出字节、关闭取消与保存退出。构建在晋升前还运行固定 Setup 的完整安装、原生场景、卸载与状态恢复，并将安装器哈希与独立的已安装 EXE 哈希写入清单。验证器按实际清单版本检查证据，旧版本仍可作为失败时保留的最后一套产物。
+
 当前资源白名单只接受 Tauri map `../docs/THIRD_PARTY_NOTICES.txt` → `THIRD_PARTY_NOTICES.txt`，并验证源文件在仓库内、非链接且非空。其它资源或 sidecar 新增到 Tauri 配置后，须先补齐经验证的打包清单。
 
 `THIRD_PARTY_NOTICES.txt`保留上游原始许可文本的换行和空白；`.gitattributes`仅对这个数据文件关闭换行转换并豁免上游行尾/末尾空白检查，避免为通过检查改写第三方文本。其它源码、脚本和文档继续执行通常的`git diff --check`。

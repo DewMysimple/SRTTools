@@ -335,6 +335,17 @@ export function executeProcessingRequest(request: ProcessingRequest, context: { 
     if (request.files.length > MAX_IMPORT_FILES || request.files.reduce((total, file) => total + file.bytes.byteLength, 0) > MAX_IMPORT_TOTAL_BYTES) {
       throw new SubtitleError('INPUT_LIMIT', '处理队列最多 100 个文件、总计 128 MiB，请分批处理。');
     }
+    if (request.kind === 'timeline') {
+      const file = request.files[0];
+      if (request.files.length !== 1 || !/\.srt$/iu.test(file.name)) {
+        throw new SubtitleError('UNSUPPORTED_FORMAT', '时间轴一次编辑一份 SRT。其他格式请先在工具箱中显式转换为 SRT。');
+      }
+      const input = readDocument(file, request.options);
+      if (input.uncertainEncoding) {
+        throw new SubtitleError('UNCERTAIN_ENCODING', '请核对并手动选择输入编码，再重新打开字幕。');
+      }
+      return { ...task, status: 'success', document: input.document, diagnostics: input.diagnostics, summary: '已读取时间轴字幕' };
+    }
     return request.kind === 'combined' ? executeCombined(request, task)
       : request.kind === 'workflow' ? executeWorkflowFile(request, task, context) : executeFile(request, task);
   } catch (error) {

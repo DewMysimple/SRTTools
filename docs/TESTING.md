@@ -1,5 +1,9 @@
 # 测试与验收
 
+## v0.5.0 字幕时间轴
+
+按[时间轴 QA](TIMELINE_V0.5_QA.md)核对时间数学、真实指针交互、SRT 字节、渲染测量、原生关闭保护及包体验收。既有工具箱 Chromium、Rust、原生工作流和发布安全门槛继续运行。
+
 v0.1.1 的复现步骤、版本基线、Windows 测试环境和实际结果见 [发布检查表](RELEASE_CHECKLIST_v0.1.1.md)。回归夹具位于 [examples/回归](../examples/回归)，包含 UTF-8 BOM、GBK CRLF、Unicode 文件名、重复编号和损坏时间行。Playwright 将本次运行的截图留在 `test-results/`。
 
 ## v0.4.0 第五阶段收尾复核（2026-11-05）

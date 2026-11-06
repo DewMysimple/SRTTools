@@ -1,0 +1,78 @@
+.timeline-main { padding: 18px clamp(12px, 2vw, 28px) 20px; }
+.timeline-main .content-container { max-width: 1460px; }
+.timeline-workspace { display: grid; gap: 10px; min-width: 0; }
+.timeline-workspace h1, .timeline-workspace h2, .timeline-workspace p { margin: 0; }
+.timeline-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.timeline-heading h1 { font-size: 24px; line-height: 1.3; letter-spacing: -0.02em; }
+.timeline-heading p, .timeline-inline-note { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.timeline-actions { flex-wrap: wrap; gap: 6px; }
+.timeline-options, .timeline-controls, .timeline-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+.timeline-options, .timeline-controls, .timeline-summary, .timeline-step { font-size: 12px; }
+.timeline-options label, .timeline-slider, .timeline-check, .timeline-jump { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.timeline-options select, .timeline-step select, .timeline-jump input {
+  border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 4px 6px;
+}
+.timeline-slider input { width: 56px; accent-color: var(--primary); }
+.timeline-jump { margin-left: auto; }
+.timeline-jump input { width: 100px; font-variant-numeric: tabular-nums; }
+.timeline-editor { display: grid; min-width: 0; gap: 10px; }
+.timeline-card { min-width: 0; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); padding: 10px 12px; }
+.timeline-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.timeline-panel-heading h2, .timeline-controls h2 { font-size: 14px; font-weight: 650; }
+.timeline-panel-heading span { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.timeline-list-panel, .timeline-inspector, .timeline-cue-form, .timeline-cue-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.timeline-cue-list { flex: 1; }
+.timeline-workspace .field { gap: 3px; font-size: 12px; }
+.timeline-workspace .field input:not([type="checkbox"]) { padding: 5px 7px; min-height: 29px; }
+.timeline-list-scroll { height: 112px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; overscroll-behavior: contain; }
+.timeline-list-rail { position: relative; }
+.timeline-list-item {
+  position: absolute; left: 0; right: 0; width: 100%; display: flex; flex-direction: column; gap: 2px;
+  text-align: left; padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; background: var(--surface);
+  color: var(--text); font-size: 12px; overflow: hidden; font-variant-numeric: tabular-nums;
+}
+.timeline-list-item:hover, .timeline-list-item.selected { background: var(--primary-soft); border-color: var(--primary); }
+.timeline-list-item:focus-visible { outline-offset: -3px; }
+.timeline-row-text { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
+.timeline-warning { color: var(--warning); font-weight: 650; }
+.timeline-time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.timeline-cue-form textarea {
+  font: inherit; resize: vertical; padding: 5px 7px; min-height: 40px; max-height: 170px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 100%;
+}
+.timeline-cue-form textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.timeline-step { align-self: flex-start; margin-top: auto; }
+.timeline-track { display: grid; gap: 7px; }
+.timeline-controls { min-width: 0; }
+.timeline-controls .button-row { gap: 4px; }
+.timeline-viewport { width: 100%; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-muted); }
+.timeline-rail { position: relative; }
+.timeline-surface { position: sticky; left: 0; overflow: clip; touch-action: none; user-select: none; }
+.timeline-ruler { position: sticky; top: 0; z-index: 3; height: 28px; background: var(--surface); border-bottom: 1px solid var(--border); cursor: crosshair; }
+.timeline-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--border); padding: 4px 0 0 4px; white-space: nowrap; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.timeline-cue { position: absolute; height: 28px; display: flex; align-items: stretch; background: var(--primary-soft); border: 1px solid var(--primary); border-radius: 4px; color: var(--text); }
+.timeline-cue.overlap { border-style: dashed; }
+.timeline-cue.selected { box-shadow: inset 0 0 0 1px var(--primary); }
+.timeline-cue-body { width: 100%; min-width: 0; background: transparent; padding: 0 9px; border: 0; color: inherit; cursor: grab; font-size: 12px; text-align: left; }
+.timeline-cue-body:active { cursor: grabbing; }
+.timeline-cue-body span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.timeline-cue-body:focus-visible { outline-offset: -2px; }
+.timeline-edge { position: absolute; top: 0; bottom: 0; width: 7px; border: 0; padding: 0; color: var(--primary); background: transparent; cursor: ew-resize; }
+.timeline-edge.start { left: 0; border-right: 1px solid color-mix(in srgb, currentColor 35%, transparent); }
+.timeline-edge.end { right: 0; border-left: 1px solid color-mix(in srgb, currentColor 35%, transparent); }
+.timeline-edge:hover { background: color-mix(in srgb, currentColor 30%, transparent); }
+.timeline-playhead, .timeline-snap-line { position: absolute; top: 0; bottom: 0; z-index: 4; width: 2px; pointer-events: none; background: var(--danger); }
+.timeline-snap-line { background: var(--primary); }
+.timeline-track-status { font-size: 12px; color: var(--text-muted); }
+.timeline-summary { padding: 4px 0; color: var(--text-muted); }
+.timeline-summary strong { color: var(--text); overflow-wrap: anywhere; }
+.timeline-diagnostics { font-size: 13px; }
+.timeline-diagnostics ul { margin: 0 0 8px; padding-left: 20px; }
+.timeline-modal p { margin-block: 8px 14px; }
+@media (max-width: 850px) {
+  .timeline-jump { margin-left: 0; }
+  .timeline-heading h1 { font-size: 21px; }
+}
+@media (max-width: 670px) {
+  .timeline-editor { grid-template-columns: 1fr !important; }
+}

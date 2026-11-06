@@ -171,15 +171,15 @@ export async function readBrowserFiles(files: Iterable<File>): Promise<ImportedF
   return result;
 }
 
-export async function pickFiles(): Promise<ImportedFile[]> {
+export async function pickFiles(scope: 'toolbox' | 'timeline' = 'toolbox'): Promise<ImportedFile[]> {
   if (isDesktop()) {
-    return (await nativeInvoke<NativeImportedFile[]>('select_files')).map(fromNative);
+    return (await nativeInvoke<NativeImportedFile[]>('select_files', scope === 'timeline' ? { singleSrt: true } : undefined)).map(fromNative);
   }
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.srt,.vtt,.ass,.ssa,.txt,.csv';
-    input.multiple = true;
+    input.accept = scope === 'timeline' ? '.srt' : '.srt,.vtt,.ass,.ssa,.txt,.csv';
+    input.multiple = scope === 'toolbox';
     input.hidden = true;
     let settled = false;
     const cleanup = () => {

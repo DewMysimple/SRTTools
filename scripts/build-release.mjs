@@ -2,7 +2,8 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
 import {
-  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, controlledPath, exists, fileRecords, makeStage,
+  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, TIMELINE_SMOKE_CHECKS, SETUP_ACCEPTANCE_CHECKS,
+  controlledPath, exists, fileRecords, makeStage, requiresTimelineEvidence,
   promoteRelease, recordPortableInventory, removeTree, run, sha256, validateStage, verifyRelease, walkFiles,
   withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths, releaseResources,
   validateWindowsQaReport,
@@ -16,6 +17,7 @@ if (args.some(argument => !known.includes(argument))) throw new Error('Unknown r
 const root = await fs.realpath(PROJECT_ROOT);
 const npmCli = process.env.npm_execpath ?? path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js');
 const npm = (arguments_, options = {}) => run(process.execPath, [npmCli, ...arguments_], { cwd: root, ...options });
+const recordedChecks = (keys, values) => Object.fromEntries(keys.map(key => [key, values?.[key]]));
 
 async function preflight() {
   if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('release:win requires Windows x64.');
@@ -196,10 +198,29 @@ if (args.includes('--check')) {
         status: smoke.status, executableSha256: smoke.executableSha256?.toUpperCase(),
         checks: smoke.checks, checkedAt: smoke.checkedAt,
         scenario: smoke.scenario,
-        workflowChecks: Object.fromEntries(WORKFLOW_SMOKE_CHECKS.map(key => [key, smoke.workflowChecks?.[key]])),
+        workflowChecks: recordedChecks(WORKFLOW_SMOKE_CHECKS, smoke.workflowChecks),
+        environment: smoke.environment,
         originalPreserved: smoke.originalPreserved, shutdown: smoke.shutdown, storeRestored: smoke.storeRestored,
         cleanupComplete: smoke.cleanupComplete,
       };
+      if (requiresTimelineEvidence(baseline.version)) {
+        info.smoke.timelineChecks = recordedChecks(TIMELINE_SMOKE_CHECKS, smoke.timelineChecks);
+        const setupReport = path.join(stage, 'setup-acceptance.json');
+        const setupPath = path.join(candidate, 'SRTTools-Setup.exe');
+        await run('pwsh', ['-NoProfile', '-File', path.join(root, 'scripts/windows-setup-acceptance.ps1'),
+          '-SetupPath', setupPath, '-ReportPath', setupReport, '-ExpectedVersion', baseline.version,
+          '-ExpectedSha256', await sha256(setupPath), '-SmokeScenario', 'workflow']);
+        const setup = JSON.parse(await fs.readFile(setupReport, 'utf8'));
+        info.setupAcceptance = {
+          schemaVersion: setup.schemaVersion, producer: setup.producer, status: setup.status,
+          version: setup.version, installedVersion: setup.installedVersion, scenario: setup.scenario, checkedAt: setup.checkedAt,
+          setupSha256: setup.setupSha256, installedExecutableSha256: setup.installedExecutableSha256,
+          checks: recordedChecks(SETUP_ACCEPTANCE_CHECKS, setup.checks),
+          workflowChecks: recordedChecks(WORKFLOW_SMOKE_CHECKS, setup.workflowChecks),
+          timelineChecks: recordedChecks(TIMELINE_SMOKE_CHECKS, setup.timelineChecks),
+          environment: setup.environment,
+        };
+      }
       await writeMetadata(candidate, info);
       await verifyRelease(root, candidate);
       if (args.includes('--simulate-failure=before-publish')) throw new Error('Requested build failure before publishing. Last successful release was preserved.');
@@ -212,16 +233,19 @@ if (args.includes('--check')) {
     } catch (error) {
       const report = path.join(stage, 'portable-smoke.json');
       const native = await exists(report) ? JSON.parse(await fs.readFile(report, 'utf8')) : null;
+      const setupReport = path.join(stage, 'setup-acceptance.json');
+      const setup = await exists(setupReport) ? JSON.parse(await fs.readFile(setupReport, 'utf8')) : null;
       await fs.writeFile(path.join(root, '.release-work/last-failure.json'), JSON.stringify({
         managedBy: MANAGED_BY, status: 'FAIL', recordedAt: new Date().toISOString(),
         commit: baseline.commit, version: baseline.version,
-        failureStage: native?.failureStage ?? 'build-or-publish',
-        failureKind: native?.failureKind ?? error.name,
-        failureReason: native?.failureReason,
+        failureStage: setup?.failureStage ?? native?.failureStage ?? 'build-or-publish',
+        failureKind: setup?.failureKind ?? native?.failureKind ?? error.name,
+        failureReason: setup?.failureReason ?? native?.failureReason,
         checks: native?.checks,
         scenario: native?.scenario,
-        workflowChecks: native?.workflowChecks
-          && Object.fromEntries(WORKFLOW_SMOKE_CHECKS.map(key => [key, native.workflowChecks[key]])),
+        workflowChecks: native?.workflowChecks && recordedChecks(WORKFLOW_SMOKE_CHECKS, native.workflowChecks),
+        timelineChecks: native?.timelineChecks && recordedChecks(TIMELINE_SMOKE_CHECKS, native.timelineChecks),
+        setupChecks: setup?.checks && recordedChecks(SETUP_ACCEPTANCE_CHECKS, setup.checks),
       }, null, 2) + '\n');
       throw error;
     } finally {

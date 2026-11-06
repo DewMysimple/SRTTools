@@ -16,7 +16,22 @@ export const WORKFLOW_SMOKE_CHECKS = Object.freeze([
   'nativePresetJsonExchange', 'invalidPresetPreservesStore', 'nestedDirectoryWrite',
   'multiRootZipManifest', 'sourceOverlapRejected', 'failedWriteRetry', 'cancelRetry',
 ]);
+export const TIMELINE_SMOKE_CHECKS = Object.freeze([
+  'pickerAndSelection', 'dragAndUndoRedo', 'switchCancelRetainsDraft', 'closeCancelRetainsDraft',
+  'exactEditAndBytes', 'closeSaveAndExit', 'sourceUnchanged',
+]);
+export const SETUP_ACCEPTANCE_CHECKS = Object.freeze([
+  'install', 'version', 'licenseResource', 'explorerDefaultOff', 'startup', 'import', 'process', 'export',
+  'sourceUnchanged', 'gracefulShutdown', 'existingSettingsAndPresetsReadByApp', 'uninstall',
+  'existingSettingsAndPresetsPreserved', 'ownedWritersStopped', 'registryRestored', 'storeRestored',
+  'noAppProcess', 'noInstallerRegistration', 'cleanupComplete',
+]);
 const HEADER_NAMES = ['SHA256SUMS.txt', 'build-info.json'];
+
+export function requiresTimelineEvidence(version) {
+  const [major, minor] = version.split('.').map(Number);
+  return major > 0 || minor >= 5;
+}
 
 export function validateWindowsQaReport(report, kind) {
   const state = kind === 'state';
@@ -234,6 +249,21 @@ export async function verifyRelease(root, directory, { requireSmoke = true } = {
       || !WORKFLOW_SMOKE_CHECKS.every(key => info.smoke.workflowChecks?.[key] === true))) {
     throw new Error('This release has no passing native workflow smoke evidence.');
   }
+  if (requireSmoke && requiresTimelineEvidence(info.version)) {
+    if (!TIMELINE_SMOKE_CHECKS.every(key => info.smoke.timelineChecks?.[key] === true)) {
+      throw new Error('This release has no passing native timeline smoke evidence.');
+    }
+    const setup = info.setupAcceptance;
+    const installer = info.files.find(file => file.path === 'SRTTools-Setup.exe');
+    if (setup?.producer !== 'srttools-setup-acceptance-v1' || setup.schemaVersion !== 1 || setup.status !== 'PASS'
+      || setup.version !== info.version || setup.installedVersion !== info.version || setup.scenario !== 'workflow'
+      || setup.setupSha256 !== installer.sha256 || !/^[0-9A-F]{64}$/u.test(setup.installedExecutableSha256)
+      || !SETUP_ACCEPTANCE_CHECKS.every(key => setup.checks?.[key] === true)
+      || !WORKFLOW_SMOKE_CHECKS.every(key => setup.workflowChecks?.[key] === true)
+      || !TIMELINE_SMOKE_CHECKS.every(key => setup.timelineChecks?.[key] === true)) {
+      throw new Error('This release has no passing NSIS installation and timeline acceptance evidence.');
+    }
+  }
   return info;
 }
 
@@ -334,7 +364,7 @@ export async function validateStage(root, directory, { allowCurrentProcess = fal
   const marker = JSON.parse(await fs.readFile(path.join(directory, '.stage.json'), 'utf8'));
   if (marker.managedBy !== MANAGED_BY || marker.root !== await fs.realpath(root)) throw new Error('Unknown staging ownership.');
   if (processIsAlive(marker.pid) && !(allowCurrentProcess && marker.pid === process.pid)) throw new Error('Staging is in use.');
-  const allowed = ['.stage.json', 'candidate', 'unpacked', 'previous', 'portable-smoke.json', 'test-results', 'playwright-report'];
+  const allowed = ['.stage.json', 'candidate', 'unpacked', 'previous', 'portable-smoke.json', 'setup-acceptance.json', 'test-results', 'playwright-report'];
   if ((await fs.readdir(directory)).some(name => !allowed.includes(name))) throw new Error('Unknown file in staging; cleanup skipped.');
   if (await exists(path.join(directory, 'previous'))) {
     // A failed rollback or interrupted promotion can leave the only good copy here.

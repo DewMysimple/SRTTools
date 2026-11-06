@@ -41,7 +41,7 @@ export interface ProcessedTask {
 }
 
 export interface ProcessingRequest {
-  kind: 'file' | 'combined' | 'workflow';
+  kind: 'file' | 'combined' | 'workflow' | 'timeline';
   files: ImportedFile[];
   operation: string;
   params: Record<string, unknown>;
