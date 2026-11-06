@@ -11,3 +11,5 @@
 ## 早期候选
 
 首个干净候选 `0cff034036b3e68e485a0b191e11c85b84a547e4` 的 86 项 Chromium 回归、Rust 和构建通过。原生在旧组合框驱动的 PowerShell 5.1 `Windows.Point` 无参构造失败，发布保留 0.6.0 的旧包。独立真实草稿场景进一步发现此测试机的新建 AppLocalData 目录由系统映射到另一块本地磁盘，普通作用域比较拒绝了其写入。当前候选固定两条路径的各级句柄并拒绝 reparse 和非本地目标，正向与 junction 反例均通过。初次失败及诊断回执保存在 `src-tauri/target/v061-*`。
+
+`fd3f2a554cc0c65a4955750b9e28eaab6e18a9d0` 的 ZIP 候选通过工作流、媒体与六项真实草稿场景，性能驱动在原生文件打开尚未完成时访问禁用字段，候选未晋升。增加检查器可编辑等待后，同一程序的独立 `windows-smoke.ps1 -Scenario recovery -ExpectedVersion 0.6.1` 完整通过，包含 500 / 5,000 / 10,000 条采样。此回执用于诊断，正式验收仍要求 ZIP 与 Setup 分别通过。

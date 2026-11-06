@@ -13,7 +13,11 @@ function Recovery-Open([string] $Path) {
   Select-DialogPath '选择时间轴字幕' $Path
 }
 function Recovery-Edit([string] $Value) {
-  (Recovery-Field '字幕正文').SetValue($Value)
+  $editable = Wait-Condition {
+    $control = Find-Control '字幕正文' $types::Edit
+    if ($control -and $control.Current.IsEnabled) { $control }
+  } 'The opened subtitle inspector did not finish loading.'
+  $editable.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($Value)
   Click-Control '应用编辑'
   Wait-Condition { (Read-RecoveryText) -ceq $Value } 'Inspector edit was not applied.' | Out-Null
 }
@@ -26,7 +30,12 @@ function Recovery-Latest([int] $Revision = 0) {
     Sort-Object { [int]($_.Name.Split('.')[1]) } -Descending | Select-Object -First 1
 }
 function Recovery-Protected([int] $Revision) {
-  Wait-Condition {
+  try {
+    Wait-Condition {
+      $item = Recovery-Latest $Revision
+      if ($item -and (Find-Text '^草稿已保护')) { $item }
+    } 'Draft protection did not acknowledge the on-disk revision.'
+  } catch {
     $failure = Find-Text '^草稿保护失败'
     if ($failure -and $failure.Current) {
       $texts = @($application.FindAll($scope::Descendants, (Condition $element::ControlTypeProperty $types::Text)) |
@@ -35,9 +44,8 @@ function Recovery-Protected([int] $Revision) {
       $detail = ($texts | Select-Object -Skip ([Math]::Max(0, $index)) -First 3) -join ' '
       throw ('Draft protection reported: ' + $detail)
     }
-    $item = Recovery-Latest $Revision
-    if ($item -and (Find-Text '^草稿已保护')) { $item }
-  } 'Draft protection did not acknowledge the on-disk revision.'
+    throw
+  }
 }
 function Recovery-Payload($Item) {
   Assert-Condition ((Assert-QANoReparse $Item.DirectoryName) -eq $draftProfilePath -and
@@ -219,5 +227,6 @@ foreach ($count in @(500, 5000, 10000)) {
     cues = $count; openMs = $openMs; saveMs = $saveTimes; restoreMs = $restoreMs; snapshotBytes = $bytes;
     peakHostWorkingSetBytes = $peakWorkingSet; sourceSha256 = $sourceBefore
   }
+  Write-Host ('Measured native draft recovery at ' + $count + ' cues')
 }
 Recovery-Pass 'boundedDraftMeasurements'
