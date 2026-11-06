@@ -107,7 +107,7 @@ function Select-Option([string] $Field, [string] $Label) {
   }
   # WebView2 sometimes keeps a native popup outside the UIA tree. Exercise
   # the actual keyboard selection only while the owned combo has focus.
-  Add-Type -AssemblyName System.Windows.Forms
+  if (!('SubtitleDesktopInteraction' -as [type])) { . (Join-Path $PSScriptRoot 'windows-desktop-interaction.ps1') }
   $ownsFocus = {
     [SubtitleSmokeNative]::GetForegroundWindow() -eq $applicationHandle -and
       [System.Windows.Automation.Automation]::Compare($control, $element::FocusedElement)
@@ -119,14 +119,19 @@ function Select-Option([string] $Field, [string] $Label) {
     Start-Sleep -Milliseconds 90
     & $ownsFocus
   } ('The owned native combo box did not acquire keyboard focus: ' + $Field) 3000 | Out-Null
+  # UIA focus can be reported before the underlying Chromium widget takes input.
+  $point = [Windows.Point]::new()
+  if ($control.TryGetClickablePoint([ref]$point) -and [SubtitleDesktopInteraction]::ClickOwned($applicationHandle, [int]$point.X, [int]$point.Y)) {
+    Start-Sleep -Milliseconds 110
+  }
   # An inaccessible WebView popup can remain open while UIA reports Collapsed.
   # Close it before using arrows, which otherwise move only the popup highlight.
-  Assert-Condition (& $ownsFocus) 'The owned native combo box lost keyboard focus.'
-  [Windows.Forms.SendKeys]::SendWait('{ESC}')
+  Assert-Condition ([SubtitleDesktopInteraction]::PressOwnedKey($applicationHandle, 0x1B)) 'The owned native combo window lost foreground focus.'
   Wait-Condition { & $ownsFocus } ('The owned native combo box lost focus after closing its popup: ' + $Field) 1500 | Out-Null
   for ($index = 0; $index -lt 53; $index++) {
     Assert-Condition (& $ownsFocus) 'The owned native combo box lost keyboard focus.'
-    [Windows.Forms.SendKeys]::SendWait($(if ($index -eq 0) { '{HOME}' } else { '{DOWN}' }))
+    $key = if ($index -eq 0) { 0x24 } else { 0x28 }
+    Assert-Condition ([SubtitleDesktopInteraction]::PressOwnedKey($applicationHandle, $key)) 'The owned native combo window lost foreground focus.'
     Start-Sleep -Milliseconds 55
     if ($value.Current.Value -ceq $Label) { return }
   }

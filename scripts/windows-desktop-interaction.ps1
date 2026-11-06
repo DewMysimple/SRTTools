@@ -8,6 +8,7 @@ public static class SubtitleDesktopInteraction {
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetClassName(IntPtr handle, System.Text.StringBuilder name, int max);
  [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr handle, uint message, IntPtr wparam, IntPtr lparam);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
+ [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr handle, int x, int y, int width, int height, bool repaint);
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr handle, int command);
  [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
@@ -25,6 +26,23 @@ public static class SubtitleDesktopInteraction {
  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X,Y; public Point(int x,int y) { X=x;Y=y; } }
  public static IntPtr RootAt(int x,int y) { return GetAncestor(WindowFromPoint(new Point(x,y)),2); }
+ public static bool ClickOwned(IntPtr owner,int x,int y) {
+  if(GetForegroundWindow()!=owner || RootAt(x,y)!=owner) return false;
+  var previous=System.Windows.Forms.Cursor.Position;
+  try {
+   if(!SetCursorPos(x,y)) return false;
+   mouse_event(0x0002,0,0,0,UIntPtr.Zero);
+   mouse_event(0x0004,0,0,0,UIntPtr.Zero);
+   return true;
+  } finally { SetCursorPos(previous.X,previous.Y); }
+ }
+ public static bool PressOwnedKey(IntPtr owner,byte key) {
+  if(GetForegroundWindow()!=owner) return false;
+  uint flags=key==0x24 || key==0x28 ? 1u : 0u;
+  keybd_event(key,0,flags,UIntPtr.Zero);
+  keybd_event(key,0,flags|2u,UIntPtr.Zero);
+  return true;
+ }
  public static IntPtr RootWindow(IntPtr handle) { return GetAncestor(handle,2); }
  public static string WindowClass(IntPtr handle) { var name=new System.Text.StringBuilder(128); GetClassName(handle,name,128); return name.ToString(); }
  public static void ContextMenu(IntPtr explorer) {
