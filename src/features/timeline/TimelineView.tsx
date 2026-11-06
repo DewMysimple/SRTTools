@@ -1,10 +1,11 @@
-import { memo, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type Ref } from 'react';
+import { memo, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent, type Ref } from 'react';
 import type { SubtitleCue } from '../../core/models';
 import { formatTimestamp, parseTimestamp } from '../../core/time';
 import { errorText } from '../../components/common';
 import type { CueIndex } from './core/cue-index';
 import { fitScale, getTimeTicks, MIN_SPAN_MS, msToX, scrollGeometry, tickInterval, xToMs, zoomAround } from './core/coordinates';
 import { timeChanges, type EditMode } from './core/editing-session';
+import type { LoopRange, TimelineClock } from './core/media-timing';
 import type { layoutCues } from './core/interval-layout';
 
 const RULER_HEIGHT = 28;
@@ -40,7 +41,9 @@ interface Props {
   layout: ReturnType<typeof layoutCues>;
   numbers: ReadonlyMap<string, number>;
   selectedIds: readonly string[];
-  playheadMs: number;
+  clock: TimelineClock;
+  mediaDurationMs: number;
+  loop: LoopRange | undefined;
   disabled: boolean;
   editDisabled: boolean;
   onSelect: (id: string, extend: boolean, range: boolean) => void;
@@ -92,7 +95,7 @@ function projectDrag(drag: Drag, clientX: number, startMs: number, snap: boolean
 }
 
 export const TimelineView = memo(function TimelineView({
-  ref, index, layout, numbers, selectedIds, playheadMs, disabled, editDisabled, onSelect, onCommit, onSeek, onError,
+  ref, index, layout, numbers, selectedIds, clock, mediaDurationMs, loop, disabled, editDisabled, onSelect, onCommit, onSeek, onError,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -107,7 +110,7 @@ export const TimelineView = memo(function TimelineView({
   const [preview, setPreview] = useState<Preview>();
   const [jump, setJump] = useState('');
   const { width } = dimensions;
-  const durationMs = Math.max(index.endMs, MIN_SPAN_MS);
+  const durationMs = Math.max(index.endMs, mediaDurationMs, MIN_SPAN_MS);
   const fitted = fitScale(durationMs, width);
   const pixelsPerSecond = Math.max(fitted, scale ?? fitted);
   const rail = scrollGeometry(durationMs, pixelsPerSecond, width);
@@ -282,7 +285,6 @@ export const TimelineView = memo(function TimelineView({
   }
   const visibleById = new Map(Array.from(slots.values(), cue => [cue.id, cue]));
   const ticks = getTimeTicks(viewport.startMs, endMs, pixelsPerSecond);
-  const playheadX = msToX(playheadMs, viewport);
   const snapX = preview?.snapMs === undefined ? -1 : msToX(preview.snapMs, viewport);
 
   return <section className="timeline-card timeline-track" aria-label="字幕时间轨道">
@@ -337,7 +339,11 @@ export const TimelineView = memo(function TimelineView({
               {!editDisabled && left + widthPx <= width && <button type="button" className="timeline-edge end" {...props} data-cue-mode="trim-end" aria-label={`调整字幕 ${number} 出点`} tabIndex={-1} />}
             </div>;
           })}
-          {playheadX >= 0 && playheadX <= width && <div className="timeline-playhead" style={{ left: Math.min(width - 1, playheadX) }} aria-hidden="true" />}
+          <TimelinePlayhead clock={clock} startMs={viewport.startMs} pixelsPerSecond={pixelsPerSecond} width={width} />
+          {loop && ([['A', loop.startMs], ['B', loop.endMs]] as const).map(([label, time]) => {
+            const x = msToX(time, viewport);
+            return x >= 0 && x <= width ? <span key={label} className="timeline-loop-marker" style={{ left: Math.min(width - 1, x) }}>{label}</span> : null;
+          })}
           {snapX >= 0 && snapX <= width && <div className="timeline-snap-line" style={{ left: snapX }} aria-hidden="true" />}
         </div>
       </div>
@@ -349,3 +355,11 @@ export const TimelineView = memo(function TimelineView({
     </div>
   </section>;
 });
+
+function TimelinePlayhead({ clock, startMs, pixelsPerSecond, width }: {
+  clock: TimelineClock; startMs: number; pixelsPerSecond: number; width: number;
+}) {
+  const time = useSyncExternalStore(clock.subscribe, clock.read);
+  const x = msToX(time, { startMs, pixelsPerSecond });
+  return x >= 0 && x <= width ? <div className="timeline-playhead" style={{ left: Math.min(width - 1, x) }} aria-hidden="true" /> : null;
+}

@@ -4,7 +4,6 @@ use super::{
 };
 use serde::Serialize;
 use std::{
-    collections::VecDeque,
     fs::{self, File},
     io::{Read, Seek, SeekFrom},
     path::Path,
@@ -43,18 +42,6 @@ pub(crate) struct MediaAccess {
     picker: Arc<AtomicUsize>,
     requests: Arc<AtomicUsize>,
     epoch: Arc<AtomicU64>,
-    probe: Arc<Mutex<VecDeque<ProbeResponse>>>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ProbeResponse {
-    method: String,
-    range: Option<String>,
-    status: u16,
-    content_range: Option<String>,
-    content_length: Option<u64>,
-    body_bytes: usize,
 }
 
 struct Permit(Arc<AtomicUsize>);
@@ -97,48 +84,6 @@ impl MediaAccess {
         };
         serve(file, request)
     }
-
-    fn record_probe(&self, request: &Request<Vec<u8>>, response: &Response<Vec<u8>>) {
-        let mut probe = self.probe.lock().unwrap();
-        if probe.len() >= 512 {
-            probe.pop_front();
-        }
-        let response_header = |name| {
-            response
-                .headers()
-                .get(name)
-                .and_then(|value| value.to_str().ok())
-        };
-        probe.push_back(ProbeResponse {
-            method: request.method().to_string(),
-            range: request
-                .headers()
-                .get(header::RANGE)
-                .and_then(|value| value.to_str().ok())
-                .filter(|value| value.len() <= 64)
-                .map(str::to_owned),
-            status: response.status().as_u16(),
-            content_range: response_header(header::CONTENT_RANGE).map(str::to_owned),
-            content_length: response_header(header::CONTENT_LENGTH)
-                .and_then(|value| value.parse().ok()),
-            body_bytes: response.body().len(),
-        });
-    }
-}
-
-#[tauri::command]
-pub(crate) fn media_probe_responses(
-    app: AppHandle,
-    window: WebviewWindow,
-    reset: bool,
-) -> Result<Vec<ProbeResponse>, String> {
-    ensure_main(&window)?;
-    let access = app.state::<MediaAccess>();
-    let mut probe = access.probe.lock().unwrap();
-    if reset {
-        probe.clear();
-    }
-    Ok(probe.iter().cloned().collect())
 }
 
 fn media_type(path: &Path) -> Option<&'static str> {
@@ -375,9 +320,7 @@ pub(crate) fn handle(
     tauri::async_runtime::spawn_blocking(move || {
         let _permit = permit;
         let token = request_token(request.uri()).expect("URI was checked above");
-        let response = access.respond(token, &request);
-        access.record_probe(&request, &response);
-        responder.respond(response);
+        responder.respond(access.respond(token, &request));
     });
 }
 
@@ -581,6 +524,7 @@ mod tests {
             StatusCode::NOT_FOUND
         );
         assert!(fs::OpenOptions::new().write(true).open(&path).is_err());
+        assert!(fs::remove_file(&path).is_err());
         let (replacement, next) = open_media(&replacement_path).unwrap();
         *access.current.lock().unwrap() = Some(replacement);
         assert_eq!(
@@ -597,8 +541,44 @@ mod tests {
             access.respond(&next.token, &plain).status(),
             StatusCode::NOT_FOUND
         );
+        let (opened, selection) = open_media(&replacement_path).unwrap();
+        *access.current.lock().unwrap() = Some(opened);
+        access.clear();
+        assert_eq!(
+            access.respond(&selection.token, &plain).status(),
+            StatusCode::NOT_FOUND
+        );
         fs::remove_file(path).unwrap();
         fs::remove_file(replacement_path).unwrap();
         fs::remove_dir(folder).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn media_open_refuses_a_junction_ancestor_and_a_file_open_for_writing() {
+        use crate::commands::display_path;
+        let root = std::env::temp_dir().join(format!("srttools-media-{}", uuid::Uuid::new_v4()));
+        let destination = root.join("local");
+        let alias = root.join("alias");
+        fs::create_dir(&root).unwrap();
+        fs::create_dir(&destination).unwrap();
+        let file = destination.join("video.mp4");
+        fs::write(&file, b"synthetic test bytes").unwrap();
+        let status = std::process::Command::new("cmd.exe")
+            .args(["/C", "mklink", "/J"])
+            .arg(display_path(&alias))
+            .arg(display_path(&destination))
+            .output()
+            .unwrap();
+        assert!(status.status.success());
+        assert!(open_media(&alias.join("video.mp4")).is_err());
+        fs::remove_dir(alias).unwrap();
+        let writer = fs::OpenOptions::new().write(true).open(&file).unwrap();
+        assert!(open_media(&file).is_err());
+        drop(writer);
+        assert!(open_media(&file).is_ok());
+        fs::remove_file(file).unwrap();
+        fs::remove_dir(destination).unwrap();
+        fs::remove_dir(root).unwrap();
     }
 }

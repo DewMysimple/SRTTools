@@ -1,7 +1,7 @@
 import { useBlocker } from 'react-router-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { FolderOpen, Plus, Redo2, Save, Trash2, Undo2 } from 'lucide-react';
-import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Film, FolderOpen, Plus, Redo2, Save, Trash2, Undo2 } from 'lucide-react';
+import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { ActionDialog } from '../../components/action-dialog';
 import { EmptyState, errorText, NoticeBox } from '../../components/common';
 import { SubtitleDiffPreview } from '../../components/subtitle-diff-preview';
@@ -15,7 +15,8 @@ import {
   type EditingSession,
 } from './core/editing-session';
 import { layoutCues } from './core/interval-layout';
-import { MediaProbe } from './MediaProbe';
+import { TimelineClock, type LoopRange } from './core/media-timing';
+import { MediaPreview, type MediaPreviewHandle } from './MediaPreview';
 import { SubtitleList } from './SubtitleList';
 import { openTimelineDocument, saveTimelineDocument, timelineEncodings } from './timeline-document-service';
 import { TimelineView, type TimelineViewHandle } from './TimelineView';
@@ -47,12 +48,19 @@ function Modal({ title, children, onCancel }: { title: string; children: ReactNo
   </dialog>;
 }
 
+function TimelinePosition({ clock }: { clock: TimelineClock }) {
+  return <span aria-live="off" aria-label="时间轴光标时间">{formatTimestamp(useSyncExternalStore(clock.subscribe, clock.read), '.')}</span>;
+}
+
 export default function TimelineWorkspace() {
   const [session, setSession] = useState<EditingSession>();
   const [inputDiagnostics, setInputDiagnostics] = useState<ParseDiagnostic[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectionAnchor = useRef<string | null>(null);
-  const [playheadMs, setPlayheadMs] = useState(0);
+  const [clock] = useState(() => new TimelineClock());
+  const [mediaPresent, setMediaPresent] = useState(false);
+  const [mediaDuration, setMediaDuration] = useState(0);
+  const [loopRange, setLoopRange] = useState<LoopRange>();
   const [inputEncoding, setInputEncoding] = useState('auto');
   const [outputEncoding, setOutputEncoding] = useState('UTF-8');
   const [draft, setDraft] = useState<Fields | null>(null);
@@ -68,6 +76,7 @@ export default function TimelineWorkspace() {
   const [leftWidth, setLeftWidth] = useState(37);
   const [step, setStep] = useState(50);
   const view = useRef<TimelineViewHandle>(null);
+  const preview = useRef<MediaPreviewHandle>(null);
 
   const document = session?.document;
   const cues = document?.cues ?? EMPTY_CUES;
@@ -76,12 +85,15 @@ export default function TimelineWorkspace() {
   const numbers = useMemo(() => new Map(cues.map((cue, i) => [cue.id, i + 1])), [cues]);
   const index = useMemo(() => new CueIndex(cues), [cues]);
   const layout = useMemo(() => layoutCues(index.sorted), [index]);
+  const outsideMedia = useMemo(() => mediaDuration ? cues.filter(item => item.endMs > mediaDuration).length : 0, [cues, mediaDuration]);
   const cue = selectedIds.length === 1 ? cues[(numbers.get(selectedIds[0]) ?? 0) - 1] : undefined;
   const diagnostics = useMemo(() => {
     if (!document) return [];
     const current = validateDocument({ ...document, cues: document.cues.map((item, i) => ({ ...item, index: i + 1 })) });
-    return [...inputDiagnostics.filter(issue => issue.code !== 'INVALID_CUE_TIME'), ...current];
-  }, [document, inputDiagnostics]);
+    const result = [...inputDiagnostics.filter(issue => issue.code !== 'INVALID_CUE_TIME'), ...current];
+    if (outsideMedia) result.unshift({ severity: 'warning', code: 'MEDIA_DURATION', message: `${outsideMedia} 条字幕超出视频时长，仍可在时间轴中编辑和导出。` });
+    return result;
+  }, [document, inputDiagnostics, outsideMedia]);
   const diagnosticErrors = diagnostics.filter(issue => issue.severity === 'error').length;
   const fields = draft ?? (cue ? fieldsFor(cue) : null);
 
@@ -174,12 +186,13 @@ export default function TimelineWorkspace() {
     await runIO(async () => {
       const opened = await openTimelineDocument(inputEncoding);
       if (!opened) return;
+      await preview.current?.close();
       setSession(createSession(opened.document));
       setInputDiagnostics(opened.diagnostics);
       setOutputEncoding(opened.document.encoding);
       setSelectedIds(opened.document.cues.length ? [opened.document.cues[0].id] : []);
       selectionAnchor.current = opened.document.cues[0]?.id ?? null;
-      setPlayheadMs(0);
+      clock.set(0);
       setDraft(null);
       setSavedPath('');
       setShowDiagnostics(false);
@@ -262,11 +275,15 @@ export default function TimelineWorkspace() {
 
   const controlsDisabled = busy || unrecoverable || !!draft;
   const diagStart = diagnosticPage * 20;
+  const seek = (timeMs: number) => { if (!preview.current?.seek(timeMs)) clock.set(timeMs); };
   return <section className="timeline-workspace" aria-label="字幕校时工作区">
     <div className="timeline-heading">
       <div><h1>字幕时间轴</h1><p>本地 SRT 校时与编辑 · 单文件独立草稿</p></div>
       <div className="button-row timeline-actions">
         <button type="button" className="button secondary" disabled={busy} onClick={requestOpen}><FolderOpen size={16} />打开字幕</button>
+        {isDesktop() && <button type="button" className="button secondary" disabled={busy} onClick={() => void preview.current?.open()}>
+          <Film size={16} />{mediaPresent ? '更换视频' : '关联视频'}
+        </button>}
         <button type="button" className="button secondary" disabled={controlsDisabled || !session?.past.length} onClick={() => edit(undo)}><Undo2 size={16} />撤销</button>
         <button type="button" className="button secondary" disabled={controlsDisabled || !session?.future.length} onClick={() => edit(redo)}><Redo2 size={16} />重做</button>
         <button type="button" className="button primary" disabled={busy || !session || unrecoverable} onClick={() => void saveDocument()}><Save size={16} />另存为</button>
@@ -285,18 +302,18 @@ export default function TimelineWorkspace() {
           onClick={() => setRestoring(true)}>恢复原稿</button>
       </>}
     </div>
-    <MediaProbe />
     {busy && <p className="timeline-inline-note" role="status">正在读取或保存字幕…</p>}
     {error && <div role="alert"><NoticeBox kind="error">{error}</NoticeBox></div>}
     {unrecoverable && <NoticeBox kind="error">文件包含无法恢复的 SRT 结构。请修正源文件后重新打开。下方可查看已识别的字幕和诊断。</NoticeBox>}
-    {!session ? <div className="timeline-card"><EmptyState title="打开 SRT 开始校时" description="可拖动字幕、修剪入点或出点，也可直接输入毫秒时间。其他格式请先在工具箱中显式转换成 SRT。" /></div> : <>
-      <div key={`editor-${document?.id}`} className="timeline-editor" style={{ gridTemplateColumns: `minmax(0, ${leftWidth}fr) minmax(0, ${100 - leftWidth}fr)` }}>
+    <div className={`timeline-editor${mediaPresent ? ' media-enabled' : ''}${session ? '' : ' no-document'}`}
+      style={{ '--list-fraction': `${leftWidth}fr`, '--preview-fraction': `${100 - leftWidth}fr` } as CSSProperties}>
+      {!session ? <div className="timeline-card timeline-open-hint"><EmptyState title="打开 SRT 开始校时" description="可拖动字幕、修剪入点或出点，也可直接输入毫秒时间。其他格式请先在工具箱中显式转换成 SRT。" /></div> : <>
         <section className="timeline-card timeline-list-panel" aria-label="字幕列表与搜索">
           <div className="timeline-panel-heading"><h2>字幕列表</h2><span>{cues.length} 条</span></div>
-          <SubtitleList cues={cues} selectedIds={selectedIds} overlapping={layout.overlapping} disabled={busy || !!draft} onSelect={listSelect} />
+          <SubtitleList key={document?.id} cues={cues} selectedIds={selectedIds} overlapping={layout.overlapping} disabled={busy || !!draft} onSelect={listSelect} />
           <div className="button-row">
             <button type="button" className="button secondary small" disabled={controlsDisabled} onClick={() => edit(current => {
-              const next = insertCue(current, playheadMs);
+              const next = insertCue(current, clock.read());
               setSelectedIds([next.document.cues.at(-1)!.id]);
               return next;
             })}><Plus size={15} />插入字幕</button>
@@ -323,21 +340,25 @@ export default function TimelineWorkspace() {
             <div className="button-row">
               <button type="submit" className="button primary small" disabled={!draft || busy || unrecoverable}>应用编辑</button>
               <button type="button" className="button secondary small" disabled={!draft || busy} onClick={() => { setDraft(null); setError(''); }}>取消编辑</button>
-              <button type="button" className="button secondary small" disabled={busy} onClick={() => { setPlayheadMs(cue.startMs); view.current?.reveal(cue.startMs, cue.id); }}>定位字幕</button>
+              <button type="button" className="button secondary small" disabled={busy} onClick={() => { seek(cue.startMs); view.current?.reveal(cue.startMs, cue.id); }}>定位字幕</button>
             </div>
           </form> : <p className="timeline-inline-note">{selectedIds.length > 1 ? '可拖动或按方向键将选中的字幕一起平移。' : '在列表或轨道上选择一条字幕进行编辑。'}</p>}
           <label className="timeline-step">微调步长 <select value={step} onChange={event => setStep(Number(event.target.value))}>
             {[10, 50, 100].map(value => <option value={value} key={value}>{value} ms</option>)}
           </select></label>
         </section>
-      </div>
+      </>}
+      {isDesktop() && <MediaPreview ref={preview} clock={clock} index={index} onPresence={setMediaPresent} onDuration={setMediaDuration} onLoop={setLoopRange} />}
+    </div>
+    {session && <>
       <TimelineView key={`track-${document?.id}`} ref={view} index={index} layout={layout} numbers={numbers} selectedIds={selectedIds}
-        playheadMs={playheadMs} disabled={busy || !!draft} editDisabled={unrecoverable} onSelect={select} onSeek={setPlayheadMs}
+        clock={clock} mediaDurationMs={mediaDuration} loop={loopRange} disabled={busy || !!draft} editDisabled={unrecoverable} onSelect={select} onSeek={seek}
         onCommit={changes => edit(current => replaceCues(current, changes))} onError={setError} />
       <div className="timeline-summary" role="status">
         <strong>{document?.fileName}</strong><span>{cues.length} 条 · SRT · {document?.encoding} · {document?.lineEnding}</span>
-        <span>{formatTimestamp(playheadMs, '.')}</span><span>{dirty ? '有未保存修改' : '无未保存修改'}</span>
+        <TimelinePosition clock={clock} /><span>{dirty ? '有未保存修改' : '无未保存修改'}</span>
         <span>{layout.overlapping.size} 条重叠 · {diagnosticErrors} 个错误</span>
+        {outsideMedia > 0 && <span className="timeline-warning">{outsideMedia} 条超出视频时长</span>}
       </div>
       {savedPath && <p className="timeline-inline-note" role="status">最近已导出 {savedPath}</p>}
       <div className="button-row">

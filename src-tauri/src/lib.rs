@@ -68,7 +68,6 @@ pub fn run() {
             commands::read_dropped_files,
             commands::media::select_video,
             commands::media::release_video,
-            commands::media::media_probe_responses,
             commands::select_directory,
             commands::save_output,
             commands::open_output_directory,
