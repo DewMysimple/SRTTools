@@ -2,8 +2,9 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
 import {
-  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS, RECOVERY_SMOKE_CHECKS, SETUP_ACCEPTANCE_CHECKS,
-  controlledPath, exists, fileRecords, makeStage, requiresTimelineEvidence, requiresMediaEvidence, requiresRecoveryEvidence,
+  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS,
+  RECOVERY_SMOKE_CHECKS, PRECISION_SMOKE_CHECKS, SETUP_ACCEPTANCE_CHECKS,
+  controlledPath, exists, fileRecords, makeStage, requiresTimelineEvidence, requiresMediaEvidence, requiresRecoveryEvidence, requiresPrecisionEvidence,
   promoteRelease, recordPortableInventory, removeTree, run, sha256, validateStage, verifyRelease, walkFiles,
   withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths, releaseResources,
   validateWindowsQaReport,
@@ -240,6 +241,13 @@ if (args.includes('--check')) {
             target.recoveryMeasurements = receipt.recoveryMeasurements;
           }
         }
+        if (requiresPrecisionEvidence(baseline.version)) {
+          for (const [target, receipt] of [[info.smoke, smoke], [info.setupAcceptance, setup]]) {
+            target.precisionChecks = recordedChecks(PRECISION_SMOKE_CHECKS, receipt.precisionChecks);
+            target.precisionSourceSha256 = receipt.precisionSourceSha256;
+            target.precisionOutputSha256 = receipt.precisionOutputSha256;
+          }
+        }
       }
       await writeMetadata(candidate, info);
       await verifyRelease(root, candidate);
@@ -270,9 +278,11 @@ if (args.includes('--check')) {
         timelineChecks: native?.timelineChecks && recordedChecks(TIMELINE_SMOKE_CHECKS, native.timelineChecks),
         mediaChecks: native?.mediaChecks && recordedChecks(MEDIA_SMOKE_CHECKS, native.mediaChecks),
         recoveryChecks: native?.recoveryChecks && recordedChecks(RECOVERY_SMOKE_CHECKS, native.recoveryChecks),
+        precisionChecks: native?.precisionChecks && recordedChecks(PRECISION_SMOKE_CHECKS, native.precisionChecks),
         setupChecks: setup?.checks && recordedChecks(SETUP_ACCEPTANCE_CHECKS, setup.checks),
         installedMediaChecks: setup?.mediaChecks && recordedChecks(MEDIA_SMOKE_CHECKS, setup.mediaChecks),
         installedRecoveryChecks: setup?.recoveryChecks && recordedChecks(RECOVERY_SMOKE_CHECKS, setup.recoveryChecks),
+        installedPrecisionChecks: setup?.precisionChecks && recordedChecks(PRECISION_SMOKE_CHECKS, setup.precisionChecks),
         installedNativeFailure: setup?.installedNativeFailure,
       }, null, 2) + '\n');
       throw error;

@@ -8,6 +8,8 @@ export interface ValidationOptions {
   maxDurationMs?: number;
 }
 
+export const DEFAULT_MIN_CUE_DURATION_MS = 500;
+
 export function validateDocument(document: SubtitleDocument, options: ValidationOptions = {}): ParseDiagnostic[] {
   const diagnostics: ParseDiagnostic[] = [];
   const texts = new Set<string>();
@@ -20,7 +22,7 @@ export function validateDocument(document: SubtitleDocument, options: Validation
     if (!active || cue.endMs > active.endMs) active = cue;
   }
   const maxChars = options.maxChars ?? 42;
-  const minDurationMs = options.minDurationMs ?? 500;
+  const minDurationMs = options.minDurationMs ?? DEFAULT_MIN_CUE_DURATION_MS;
   const maxDurationMs = options.maxDurationMs ?? 10000;
   for (let i = 0; i < document.cues.length; i++) {
     const cue = document.cues[i];

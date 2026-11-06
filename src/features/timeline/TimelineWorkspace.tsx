@@ -1,26 +1,30 @@
 import { useBlocker, useLocation } from 'react-router-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Film, FolderOpen, Plus, Redo2, Save, Trash2, Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Crosshair, Film, FolderOpen, Play, Plus, Redo2, Save, Scissors, SlidersHorizontal, Timer, Trash2, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { ActionDialog } from '../../components/action-dialog';
 import { EmptyState, errorText, NoticeBox } from '../../components/common';
 import { SubtitleDiffPreview } from '../../components/subtitle-diff-preview';
 import type { ParseDiagnostic, SubtitleCue } from '../../core/models';
 import { formatTimestamp, parseTimestamp } from '../../core/time';
-import { validateDocument } from '../../core/validate';
+import { hasVisibleText } from '../../core/text';
+import { DEFAULT_MIN_CUE_DURATION_MS, validateDocument } from '../../core/validate';
 import { isDesktop } from '../../services/file-service';
 import { useAppStore } from '../../stores/app-store';
 import { CueIndex } from './core/cue-index';
+import { CalibrationPanel } from './CalibrationPanel';
 import {
-  createSession, deleteCues, insertCue, isDirty, markSaved, redo, replaceCues, restoreOriginal, shiftCues, undo, updateCue,
+  createSession, deleteCues, insertCue, isDirty, markSaved, redo, replaceCues, restoreOriginal, shiftCues, splitCue, undo, updateCue,
   type EditingSession,
 } from './core/editing-session';
 import { layoutCues } from './core/interval-layout';
 import { TimelineClock, type LoopRange } from './core/media-timing';
+import type { TimingChange } from './core/precision-calibration';
+import { assertSplitTime, nearestCue, setCueEndpoint, suggestSplitText, type TimeEndpoint } from './core/precision-timing';
 import { MediaPreview, type MediaPreviewHandle } from './MediaPreview';
 import { DraftRecoveryPanel, shouldOfferDraft, useDraftInventory } from './DraftRecoveryPanel';
 import { DraftRecoveryService, loadRecoverable, sessionFromDraft, type LoadedDraft, type ProtectionStatus } from './draft-recovery-service';
-import { SubtitleList } from './SubtitleList';
+import { SubtitleList, type SubtitleListHandle } from './SubtitleList';
 import { openTimelineDocument, saveTimelineDocument, timelineEncodings } from './timeline-document-service';
 import { TimelineView, type TimelineViewHandle } from './TimelineView';
 import './timeline.css';
@@ -29,6 +33,17 @@ interface Fields {
   start: string;
   end: string;
   text: string;
+}
+
+interface SplitDraft {
+  cue: SubtitleCue;
+  documentId: string;
+  revision: number;
+  timeMs: number;
+  left: string;
+  right: string;
+  suggested: boolean;
+  lineBoundary: boolean;
 }
 
 type ExitAction = 'open' | 'navigate' | 'close';
@@ -86,6 +101,13 @@ export default function TimelineWorkspace() {
   const [showDiff, setShowDiff] = useState(false);
   const [leftWidth, setLeftWidth] = useState(37);
   const [step, setStep] = useState(50);
+  const [precisionNotice, setPrecisionNotice] = useState('');
+  const [split, setSplit] = useState<SplitDraft>();
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitError, setSplitError] = useState('');
+  const [showCalibration, setShowCalibration] = useState(false);
+  const list = useRef<SubtitleListHandle>(null);
+  const inspectorText = useRef<HTMLTextAreaElement>(null);
   const view = useRef<TimelineViewHandle>(null);
   const preview = useRef<MediaPreviewHandle>(null);
 
@@ -98,6 +120,9 @@ export default function TimelineWorkspace() {
   const layout = useMemo(() => layoutCues(index.sorted), [index]);
   const outsideMedia = useMemo(() => mediaDuration ? cues.filter(item => item.endMs > mediaDuration).length : 0, [cues, mediaDuration]);
   const cue = selectedIds.length === 1 ? cues[(numbers.get(selectedIds[0]) ?? 0) - 1] : undefined;
+  const selectedPosition = selectedIds.length ? (numbers.get(selectedIds.at(-1)!) ?? 0) - 1 : -1;
+  const previousCue = cues[selectedPosition < 0 ? cues.length - 1 : selectedPosition - 1];
+  const nextCue = cues[selectedPosition + 1];
   const diagnostics = useMemo(() => {
     if (!document) return [];
     const current = validateDocument({ ...document, cues: document.cues.map((item, i) => ({ ...item, index: i + 1 })) });
@@ -160,12 +185,106 @@ export default function TimelineWorkspace() {
     setSelectedIds(current => current.every(id => ids.has(id)) ? current : current.filter(id => ids.has(id)));
     setDiagnosticPage(0);
     setError('');
+    setPrecisionNotice('');
   }
 
   function edit(change: (current: EditingSession) => EditingSession) {
     if (!session || busyRef.current || unrecoverable || draft) return;
     try { applySession(change(session)); }
     catch (problem) { setError(errorText(problem)); }
+  }
+
+  function capturePosition() {
+    return preview.current?.captureTime() ?? clock.read();
+  }
+
+  function navigateTo(target?: SubtitleCue) {
+    if (!target || draft || busyRef.current) return;
+    list.current?.reveal(target.id);
+    select(target.id, false, false, true);
+    setPrecisionNotice('');
+    setError('');
+  }
+
+  function locateAtPosition() {
+    try { navigateTo(nearestCue(index.sorted, capturePosition(), cue)); }
+    catch (problem) { setError(errorText(problem)); }
+  }
+
+  function setEndpoint(endpoint: TimeEndpoint) {
+    if (!cue || !session || draft || unrecoverable || busyRef.current || choosingVideo) return;
+    try {
+      const time = capturePosition();
+      const { updated, existing, added } = setCueEndpoint(cue, endpoint, time, cues);
+      const next = replaceCues(session, [updated]);
+      if (next === session) {
+        setPrecisionNotice('当前时间与该端点一致。');
+        return;
+      }
+      applySession(next);
+      setPrecisionNotice((endpoint === 'startMs' ? '开始' : '结束') + '时间已设为 ' + formatTimestamp(time, '.') +
+        ' · 原有重叠 ' + existing + ' 处 · 本次新增重叠 ' + added + ' 处');
+    } catch (problem) {
+      setPrecisionNotice('');
+      setError(errorText(problem));
+    }
+  }
+
+  function previewSelection() {
+    if (!cue || !mediaDuration || busyRef.current || choosingVideo || draft) return;
+    try { preview.current?.previewSelection(); setError(''); }
+    catch (problem) { setError(errorText(problem)); }
+  }
+
+  function requestSplit() {
+    if (!session || !cue || draft || unrecoverable || busyRef.current || choosingVideo) return;
+    try {
+      const timeMs = capturePosition();
+      assertSplitTime(cue, timeMs);
+      if (split?.cue.id !== cue.id || split.revision !== session.revision ||
+        split.documentId !== session.document.id || split.timeMs !== timeMs) {
+        const input = inspectorText.current;
+        const caret = input?.selectionStart === input?.selectionEnd ? input?.selectionStart : undefined;
+        setSplit({
+          cue, revision: session.revision, documentId: session.document.id, timeMs,
+          ...suggestSplitText(cue.text, caret),
+        });
+      }
+      setSplitError('');
+      setSplitOpen(true);
+    } catch (problem) { setError(errorText(problem)); }
+  }
+
+  function confirmSplit() {
+    if (!session || !split || session.document.id !== split.documentId || session.revision !== split.revision || cue?.id !== split.cue.id) {
+      setSplitError('字幕或选区已变化，请重新打开拆分预览。');
+      return;
+    }
+    try {
+      const result = splitCue(session, split.cue.id, split.timeMs, split.left, split.right);
+      applySession(result.session);
+      selectionAnchor.current = result.right.id;
+      setSelectedIds([result.right.id]);
+      view.current?.reveal(result.right.startMs, result.right.id);
+      setSplitOpen(false);
+      setSplit(undefined);
+      setPrecisionNotice('已拆分为两条字幕，当前选中后半段。可撤销一次恢复原字幕。');
+    } catch (problem) { setSplitError(errorText(problem)); }
+  }
+
+  function applyCalibration(changes: readonly TimingChange[], revision: number) {
+    if (!session || session.revision !== revision || draft || unrecoverable || busyRef.current) {
+      throw new Error('编辑状态已变化，请重新计算校准预览。');
+    }
+    const byId = new Map(changes.map(change => [change.before.id, change.after]));
+    const replacements = session.document.cues.flatMap(cue => {
+      const time = byId.get(cue.id);
+      return time ? [{ ...cue, startMs: time.startMs, endMs: time.endMs }] : [];
+    });
+    const next = replaceCues(session, replacements);
+    if (next === session) throw new Error('当前字幕没有可应用的时间变化。');
+    applySession(next);
+    setPrecisionNotice('两点校准已应用于 ' + replacements.length + ' 条字幕，可撤销一次。');
   }
 
   function applyFields(current: EditingSession) {
@@ -210,6 +329,10 @@ export default function TimelineWorkspace() {
     setShowDiagnostics(false);
     setDiagnosticPage(0);
     setShowDiff(false);
+    setPrecisionNotice('');
+    setSplitOpen(false);
+    setSplit(undefined);
+    setShowCalibration(false);
   }
 
   async function protectBeforeExit() {
@@ -288,12 +411,30 @@ export default function TimelineWorkspace() {
   }
 
   const handleKeys = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.isComposing || event.altKey || busyRef.current ||
+    if (event.defaultPrevented || event.isComposing || event.key === 'Process' || busyRef.current ||
       globalThis.document.querySelector('dialog[open]')) return;
     const target = event.target instanceof HTMLElement ? event.target : null;
-    const input = target?.closest('input, textarea, select, [contenteditable="true"]');
+    const input = target?.isContentEditable || target?.closest('input, textarea, select, [role="textbox"]');
     const key = event.key.toLowerCase();
     const primary = event.ctrlKey || event.metaKey;
+    const inWorkspace = !target || target === globalThis.document.body || !!target.closest('.timeline-workspace');
+    if (event.altKey) {
+      if (primary || event.shiftKey || input || draft || !session || !inWorkspace) return;
+      if (key === 'arrowup' || key === 'arrowdown') {
+        event.preventDefault();
+        navigateTo(key === 'arrowup' ? previousCue : nextCue);
+      } else if (!event.repeat && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
+        event.preventDefault();
+        setEndpoint(event.code === 'BracketLeft' ? 'startMs' : 'endMs');
+      }
+      return;
+    }
+    if (!primary && event.shiftKey && event.code === 'Space' && !event.repeat &&
+      inWorkspace && !input && !draft && cue && mediaDuration && !choosingVideo) {
+      event.preventDefault();
+      previewSelection();
+      return;
+    }
     if (event.key === 'Escape' && draft) {
       event.preventDefault();
       setDraft(null);
@@ -324,6 +465,8 @@ export default function TimelineWorkspace() {
   }, []);
 
   const controlsDisabled = busy || unrecoverable || !!draft;
+  const setTimeDisabled = controlsDisabled || !cue || choosingVideo;
+  const previewDisabled = busy || !!draft || !cue || !mediaDuration || choosingVideo;
   const diagStart = diagnosticPage * 20;
   const recoverableCount = inventory?.drafts.filter(row => row.health !== 'retired' && row.draftId !== recovery?.activeId).length ?? 0;
   const seek = (timeMs: number) => { if (!preview.current?.seek(timeMs)) clock.set(timeMs); };
@@ -376,12 +519,38 @@ export default function TimelineWorkspace() {
       {session?.recovered && <span>已恢复草稿 · 尚未导出</span>}
     </div>}
     {unrecoverable && <NoticeBox kind="error">文件包含无法恢复的 SRT 结构。请修正源文件后重新打开。下方可查看已识别的字幕和诊断。</NoticeBox>}
+    {session && <section className="timeline-precision" aria-label="字幕校时工具">
+      <div className="button-row">
+        <button type="button" className="button secondary small" aria-keyshortcuts="Alt+ArrowUp"
+          title="上一条字幕（Alt + ↑）" disabled={busy || !!draft || !previousCue} onClick={() => navigateTo(previousCue)}><ChevronUp size={15} />上一条</button>
+        <button type="button" className="button secondary small" aria-keyshortcuts="Alt+ArrowDown"
+          title="下一条字幕（Alt + ↓）" disabled={busy || !!draft || !nextCue} onClick={() => navigateTo(nextCue)}><ChevronDown size={15} />下一条</button>
+        <button type="button" className="button secondary small" disabled={busy || !!draft || !index.sorted.length || choosingVideo}
+          title="定位到当前或最近字幕，间隙中优先最近边界" onClick={locateAtPosition}><Crosshair size={15} />定位当前或最近字幕</button>
+        <button type="button" className="button secondary small" aria-keyshortcuts="Alt+["
+          title="设置开始时间（Alt + [）" disabled={setTimeDisabled} onClick={() => setEndpoint('startMs')}><Timer size={15} />将当前时间设为开始</button>
+        <button type="button" className="button secondary small" aria-keyshortcuts="Alt+]"
+          title="设置结束时间（Alt + ]）" disabled={setTimeDisabled} onClick={() => setEndpoint('endMs')}><Timer size={15} />将当前时间设为结束</button>
+        <button type="button" className="button secondary small" aria-keyshortcuts="Shift+Space"
+          title={!mediaDuration ? '请先关联视频' : !cue ? '请选择一条字幕' : '预览字幕区间（Shift + Space）'}
+          disabled={previewDisabled} onClick={previewSelection}><Play size={15} />预览选中字幕</button>
+        <button type="button" className="button secondary small" title={!cue ? '请选择一条字幕' : '在当前位置预览并拆分字幕'}
+          disabled={setTimeDisabled} onClick={requestSplit}><Scissors size={15} />拆分字幕</button>
+        <button type="button" className="button secondary small" aria-expanded={showCalibration}
+          title="设置两对锚点，预览偏移与漂移补偿" disabled={busy || unrecoverable || !cues.length}
+          onClick={() => setShowCalibration(value => !value)}><SlidersHorizontal size={15} />两点校准</button>
+      </div>
+      <p className="timeline-inline-note">{draft ? '请先应用或取消当前表单编辑。'
+        : !cue ? '请选择一条字幕以设置起止时间、预览区间或拆分。'
+        : mediaDuration ? '取时来源为当前视频播放位置，精度为毫秒。' : '取时来源为时间轴当前位置。关联视频后可预览区间。'}</p>
+      {precisionNotice && <p className="timeline-inline-note" role="status">{precisionNotice}</p>}
+    </section>}
     <div className={`timeline-editor${mediaPresent ? ' media-enabled' : ''}${session ? '' : ' no-document'}`}
       style={{ '--list-fraction': `${leftWidth}fr`, '--preview-fraction': `${100 - leftWidth}fr` } as CSSProperties}>
       {!session ? <div className="timeline-card timeline-open-hint"><EmptyState title="打开 SRT 开始校时" description="可拖动字幕、修剪入点或出点，也可直接输入毫秒时间。其他格式请先在工具箱中显式转换成 SRT。" /></div> : <>
         <section className="timeline-card timeline-list-panel" aria-label="字幕列表与搜索">
           <div className="timeline-panel-heading"><h2>字幕列表</h2><span>{cues.length} 条</span></div>
-          <SubtitleList key={document?.id} cues={cues} selectedIds={selectedIds} overlapping={layout.overlapping} disabled={busy || !!draft} onSelect={listSelect} />
+          <SubtitleList key={document?.id} ref={list} cues={cues} selectedIds={selectedIds} overlapping={layout.overlapping} disabled={busy || !!draft} onSelect={listSelect} />
           <div className="button-row">
             <button type="button" className="button secondary small" disabled={controlsDisabled} onClick={() => edit(current => {
               const next = insertCue(current, clock.read());
@@ -407,7 +576,7 @@ export default function TimelineWorkspace() {
               <label className="field">开始时间<input value={fields.start} disabled={busy || unrecoverable} onChange={event => updateFields({ start: event.target.value })} /></label>
               <label className="field">结束时间<input value={fields.end} disabled={busy || unrecoverable} onChange={event => updateFields({ end: event.target.value })} /></label>
             </div>
-            <label className="field">字幕正文<textarea rows={2} value={fields.text} disabled={busy || unrecoverable} onChange={event => updateFields({ text: event.target.value })} /></label>
+            <label className="field">字幕正文<textarea ref={inspectorText} rows={2} value={fields.text} disabled={busy || unrecoverable} onChange={event => updateFields({ text: event.target.value })} /></label>
             <div className="button-row">
               <button type="submit" className="button primary small" disabled={!draft || busy || unrecoverable}>应用编辑</button>
               <button type="button" className="button secondary small" disabled={!draft || busy} onClick={() => { setDraft(null); setError(''); }}>取消编辑</button>
@@ -419,9 +588,11 @@ export default function TimelineWorkspace() {
           </select></label>
         </section>
       </>}
-      {isDesktop() && <MediaPreview ref={preview} clock={clock} index={index} selecting={choosingVideo} onSelecting={setChoosingVideo}
+      {isDesktop() && <MediaPreview ref={preview} clock={clock} index={index} selection={cue} selecting={choosingVideo} onSelecting={setChoosingVideo}
         onPresence={setMediaPresent} onDuration={setMediaDuration} onLoop={setLoopRange} />}
     </div>
+    {session && <CalibrationPanel key={session.document.id} session={session} selectedIds={selectedIds} cue={cue} hasVideo={!!mediaDuration}
+      blocked={controlsDisabled || choosingVideo} hidden={!showCalibration} capturePosition={capturePosition} onApply={applyCalibration} />}
     {session && <>
       <TimelineView key={`track-${document?.id}`} ref={view} index={index} layout={layout} numbers={numbers} selectedIds={selectedIds}
         clock={clock} mediaDurationMs={mediaDuration} loop={loopRange} disabled={busy || !!draft} editDisabled={unrecoverable} onSelect={select} onSeek={seek}
@@ -453,6 +624,30 @@ export default function TimelineWorkspace() {
       if (session) applySession(restoreOriginal(session));
       setDraft(null);
     }}>恢复到打开字幕时的内容。已导出的文件会保留。</ActionDialog>}
+    {splitOpen && split && <Modal title="拆分字幕预览" onCancel={() => setSplitOpen(false)}>
+      <form className="timeline-split-form" onSubmit={event => { event.preventDefault(); confirmSplit(); }}>
+        <p>{split.suggested ? '已按正文光标提供拆分建议。' : '原文保留在前半段，请为后半段填写正文。'}
+          {split.lineBoundary && '分割处的换行由两条字幕之间的边界表示。'}两段正文均可编辑。</p>
+        <div className="timeline-time-fields">
+          <label className="field">前半段正文
+            <small>{formatTimestamp(split.cue.startMs, '.')} → {formatTimestamp(split.timeMs, '.')}</small>
+            <textarea aria-label="前半段正文" rows={4} value={split.left} onChange={event => { setSplit({ ...split, left: event.target.value }); setSplitError(''); }} />
+          </label>
+          <label className="field">后半段正文
+            <small>{formatTimestamp(split.timeMs, '.')} → {formatTimestamp(split.cue.endMs, '.')}</small>
+            <textarea aria-label="后半段正文" rows={4} value={split.right} onChange={event => { setSplit({ ...split, right: event.target.value }); setSplitError(''); }} />
+          </label>
+        </div>
+        {Math.min(split.timeMs - split.cue.startMs, split.cue.endMs - split.timeMs) < DEFAULT_MIN_CUE_DURATION_MS &&
+          <p className="timeline-warning">有一段短于 {DEFAULT_MIN_CUE_DURATION_MS} 毫秒。</p>}
+        {(!hasVisibleText(split.left) || !hasVisibleText(split.right)) && <p className="timeline-inline-note">两段都需要可见正文才能确认。</p>}
+        {splitError && <p className="field-error" role="alert">{splitError}</p>}
+        <div className="button-row end">
+          <button type="button" className="button secondary" onClick={() => setSplitOpen(false)}>取消拆分</button>
+          <button type="submit" className="button primary" disabled={!hasVisibleText(split.left) || !hasVisibleText(split.right)}>确认拆分</button>
+        </div>
+      </form>
+    </Modal>}
     {action && <Modal title={dirty ? '有未保存修改' : '本地草稿待处理'} onCancel={cancelExit}>
       <p>可以另存为新的 SRT。放弃修改会删除当前会话的恢复草稿。</p>
       {draft && recovery && protectDrafts && <p>保留草稿仅保留已应用的编辑，当前表单中未应用的内容会丢失。</p>}

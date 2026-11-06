@@ -4,7 +4,8 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {
-  MANAGED_BY, SETUP_ACCEPTANCE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS, RECOVERY_SMOKE_CHECKS, controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
+  MANAGED_BY, SETUP_ACCEPTANCE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS, RECOVERY_SMOKE_CHECKS, PRECISION_SMOKE_CHECKS,
+  controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
   sha256, sourceFingerprint, run, validateStage, verifyRelease, walkFiles, withReleaseLock, writeMetadata, zipPortable, assertIdlePaths, releaseResources,
   validateWindowsQaReport,
 } from './release-common.mjs';
@@ -215,7 +216,7 @@ test('v0.6 needs separate passing media receipts from the ZIP and the installed 
   assert.equal((await verifyRelease(root, final)).version, '0.6.0');
 });
 
-test('v0.6.1 requires separate crash recovery receipts and source hashes before replacing v0.6.0', async t => {
+test('crash recovery and precision timing require separate native receipts and matching hashes before promotion', async t => {
   const root = await fixture(t);
   const final = path.join(root, 'release-output');
   const stage = await makeStage(root);
@@ -258,6 +259,33 @@ test('v0.6.1 requires separate crash recovery receipts and source hashes before 
   await writeMetadata(candidate, info);
   await promoteRelease(root, candidate, stage);
   assert.equal((await verifyRelease(root, final)).version, '0.6.1');
+
+  const precisionStage = await makeStage(root);
+  const precisionCandidate = path.join(precisionStage, 'candidate');
+  const precision = await release(root, precisionCandidate, '0.7.0', {
+    version: '0.7.0', smoke: { scenario: 'workflow', ...shared, ...recovery },
+  });
+  precision.setupAcceptance = {
+    ...info.setupAcceptance, version: '0.7.0', installedVersion: '0.7.0',
+    setupSha256: await sha256(path.join(precisionCandidate, 'SRTTools-Setup.exe')),
+  };
+  await writeMetadata(precisionCandidate, precision);
+  const previous = await fileRecords(root, final, await walkFiles(root, final));
+  await assert.rejects(promoteRelease(root, precisionCandidate, precisionStage), /ZIP-extracted precision timing/u);
+  const calibration = {
+    precisionChecks: pass(PRECISION_SMOKE_CHECKS), precisionSourceSha256: 'A'.repeat(64), precisionOutputSha256: 'B'.repeat(64),
+  };
+  Object.assign(precision.smoke, calibration);
+  await writeMetadata(precisionCandidate, precision);
+  await assert.rejects(promoteRelease(root, precisionCandidate, precisionStage), /NSIS installed precision timing/u);
+  Object.assign(precision.setupAcceptance, calibration, { precisionOutputSha256: 'C'.repeat(64) });
+  await writeMetadata(precisionCandidate, precision);
+  await assert.rejects(promoteRelease(root, precisionCandidate, precisionStage), /matching source and export proof/u);
+  assert.deepEqual(await fileRecords(root, final, await walkFiles(root, final)), previous);
+  Object.assign(precision.setupAcceptance, calibration);
+  await writeMetadata(precisionCandidate, precision);
+  await promoteRelease(root, precisionCandidate, precisionStage);
+  assert.equal((await verifyRelease(root, final)).version, '0.7.0');
 });
 
 test('an incomplete workflow candidate preserves the byte-identical v0.3 last success until full verification', async t => {

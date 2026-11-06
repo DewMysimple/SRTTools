@@ -28,6 +28,10 @@ export const RECOVERY_SMOKE_CHECKS = Object.freeze([
   'committedOnlyAndVerified', 'exclusiveLockAndRetry', 'forceKillAndDiscovery', 'externalConflictIndependent',
   'exportAndSourcePreservation', 'missingSourceDeferAndDiscard', 'boundedDraftMeasurements', 'isolatedProfileCleanup',
 ]);
+export const PRECISION_SMOKE_CHECKS = Object.freeze([
+  'minimumWindowNavigation', 'liveMediaEndpointsAndNearest', 'selectedPlaybackAndSavedAB', 'unicodeSplitAndUndo',
+  'stalePreviewAndCalibration', 'calibratedDraftAfterForceExit', 'exactExportAndSourceHashes',
+]);
 export const SETUP_ACCEPTANCE_CHECKS = Object.freeze([
   'install', 'version', 'licenseResource', 'explorerDefaultOff', 'startup', 'import', 'process', 'export',
   'sourceUnchanged', 'gracefulShutdown', 'existingSettingsAndPresetsReadByApp', 'uninstall',
@@ -49,6 +53,11 @@ export function requiresMediaEvidence(version) {
 export function requiresRecoveryEvidence(version) {
   const [major, minor, patch] = version.split('.').map(Number);
   return major > 0 || minor > 6 || (minor === 6 && patch >= 1);
+}
+
+export function requiresPrecisionEvidence(version) {
+  const [major, minor] = version.split('.').map(Number);
+  return major > 0 || minor >= 7;
 }
 
 function validRecoveryMeasurements(measurements) {
@@ -319,6 +328,19 @@ export async function verifyRelease(root, directory, { requireSmoke = true } = {
         || setup.recoveryExternalSha256 !== recoveryExternalSha256
         || setup.recoveryMeasurements.some((row, i) => row.sourceSha256 !== info.smoke.recoveryMeasurements[i].sourceSha256)) {
         throw new Error('The ZIP and NSIS recovery receipts have no matching synthetic source proof.');
+      }
+    }
+    if (requiresPrecisionEvidence(info.version)) {
+      for (const [label, receipt] of [['ZIP-extracted', info.smoke], ['NSIS installed', setup]]) {
+        if (!PRECISION_SMOKE_CHECKS.every(key => receipt.precisionChecks?.[key] === true)) {
+          throw new Error('This release has no passing ' + label + ' precision timing evidence.');
+        }
+      }
+      const { precisionSourceSha256, precisionOutputSha256 } = info.smoke;
+      if (![precisionSourceSha256, precisionOutputSha256].every(hash => /^[0-9A-F]{64}$/u.test(hash))
+        || precisionSourceSha256 === precisionOutputSha256 || setup.precisionSourceSha256 !== precisionSourceSha256
+        || setup.precisionOutputSha256 !== precisionOutputSha256) {
+        throw new Error('The ZIP and NSIS precision receipts have no matching source and export proof.');
       }
     }
   }

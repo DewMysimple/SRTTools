@@ -108,17 +108,22 @@ function Select-Option([string] $Field, [string] $Label) {
   # WebView2 sometimes keeps a native popup outside the UIA tree. Exercise
   # the actual keyboard selection only while the owned combo has focus.
   if (!('SubtitleDesktopInteraction' -as [type])) { . (Join-Path $PSScriptRoot 'windows-desktop-interaction.ps1') }
-  $ownsFocus = {
-    [SubtitleSmokeNative]::GetForegroundWindow() -eq $applicationHandle -and
-      [System.Windows.Automation.Automation]::Compare($control, $element::FocusedElement)
+  $focusOwnedCombo = {
+    Wait-Condition {
+      $candidate = Find-Control $Field $types::ComboBox
+      if (!$candidate -or !$candidate.Current.IsEnabled) { return $false }
+      if ([SubtitleSmokeNative]::GetForegroundWindow() -ne $applicationHandle) {
+        [void][SubtitleSmokeNative]::SetForegroundWindow($applicationHandle)
+      }
+      if (![System.Windows.Automation.Automation]::Compare($candidate, $element::FocusedElement)) {
+        $candidate.SetFocus()
+        Start-Sleep -Milliseconds 90
+      }
+      if ([SubtitleSmokeNative]::GetForegroundWindow() -eq $applicationHandle -and
+        [System.Windows.Automation.Automation]::Compare($candidate, $element::FocusedElement)) { $candidate }
+    } ('The owned native combo box did not acquire keyboard focus: ' + $Field) 3000
   }
-  Wait-Condition {
-    if (& $ownsFocus) { return $true }
-    [void][SubtitleSmokeNative]::SetForegroundWindow($applicationHandle)
-    $control.SetFocus()
-    Start-Sleep -Milliseconds 90
-    & $ownsFocus
-  } ('The owned native combo box did not acquire keyboard focus: ' + $Field) 3000 | Out-Null
+  $control = & $focusOwnedCombo
   # UIA focus can be reported before the underlying Chromium widget takes input.
   $point = [Windows.Point]::new(0.0, 0.0)
   if ($control.TryGetClickablePoint([ref]$point) -and [SubtitleDesktopInteraction]::ClickOwned($applicationHandle, [int]$point.X, [int]$point.Y)) {
@@ -127,14 +132,19 @@ function Select-Option([string] $Field, [string] $Label) {
   # An inaccessible WebView popup can remain open while UIA reports Collapsed.
   # Close it before using arrows, which otherwise move only the popup highlight.
   Assert-Condition ([SubtitleDesktopInteraction]::PressOwnedKey($applicationHandle, 0x1B)) 'The owned native combo window lost foreground focus.'
-  Wait-Condition { & $ownsFocus } ('The owned native combo box lost focus after closing its popup: ' + $Field) 1500 | Out-Null
   for ($index = 0; $index -lt 53; $index++) {
-    Assert-Condition (& $ownsFocus) 'The owned native combo box lost keyboard focus.'
+    # React may replace the automation element when a selected value changes.
+    # Resolve the same owned field again before sending each real key.
+    $focused = & $focusOwnedCombo
+    $value = $focused.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+    if ($value.Current.Value -ceq $Label) { return }
     $key = if ($index -eq 0) { 0x24 } else { 0x28 }
     Assert-Condition ([SubtitleDesktopInteraction]::PressOwnedKey($applicationHandle, $key)) 'The owned native combo window lost foreground focus.'
     Start-Sleep -Milliseconds 55
-    if ($value.Current.Value -ceq $Label) { return }
   }
+  $focused = & $focusOwnedCombo
+  $value = $focused.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+  if ($value.Current.Value -ceq $Label) { return }
   $report.lastCombo.finalValue = $value.Current.Value
   throw ('Requested native combo-box option was not available: ' + $Field + ' / ' + $Label)
 }

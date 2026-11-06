@@ -1,6 +1,6 @@
 # Subtitle Tools
 
-Subtitle Tools 0.6.1 是轻量的 Windows 本地字幕工具箱，包含字幕时间轴、本地视频同步预览和未导出草稿的本机保护。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕和视频在本机处理。
+Subtitle Tools 0.7.0 是轻量的 Windows 本地字幕工具箱，包含字幕时间轴、本地视频同步预览、草稿恢复和精准校时。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕和视频在本机处理。
 
 操作流程：**选择文件 → 选择工具 → 设置参数 → 预览 → 确认导出**。默认生成 `原文件名_processed.ext`，不会覆盖原文件。
 
@@ -62,6 +62,13 @@ Windows 桌面版默认保护已应用的编辑。查看「草稿已保护」后
 
 WebM 和其他编码的实测范围、草稿行为及容量边界见[功能文档](docs/FEATURES.md#本地视频同步预览)。
 
+## 精准校时
+
+- 选中一条字幕，暂停视频后可把当前播放位置设为开始或结束。未关联视频时使用时间轴游标。可按 `Alt + ↑` / `Alt + ↓` 导航，`Alt + [` / `Alt + ]` 设定端点。定位当前或最近字幕只改变选中项，「定位字幕」才跳转播放头。
+- 关联视频后可预览选中的字幕区间，默认前后各留 400 毫秒，也可循环。按 `Shift + Space` 启动预览。预览暂停 A/B，结束后保留原 A/B 点。
+- 在字幕中间选择「拆分字幕」，检查并编辑两段正文后确认。拆分整体可撤销一次。
+- 展开「两点校准」，为同一片段输入两组字幕与目标时间，或从选中字幕和播放头记录锚点。可对全部字幕或当前选区预览。无效时间须修改锚点，倍率明显偏离时需要确认。应用后可一次撤销整批调整，并通过草稿保护恢复。
+
 ## 运行环境
 
 - Windows 10 / 11，x64，Microsoft Edge WebView2 Runtime。
@@ -107,7 +114,7 @@ npm run release:verify
 npm run disk:report
 ```
 
-当前 Windows 草稿、时间轴与打包验收见 [v0.6.1 QA](docs/TIMELINE_V0.6.1_QA.md)。历史证据见 [v0.6.0 媒体验收](docs/TIMELINE_V0.6_QA.md)、[v0.5.0 时间轴验收](docs/TIMELINE_V0.5_QA.md)及 [v0.4.0 收尾报告](docs/RELEASE_CLOSURE_v0.4.0.md)。
+当前 Windows 校时与打包验收见 [v0.7.0 QA](docs/TIMELINE_V0.7_QA.md)。历史证据见 [v0.6.1 草稿验收](docs/TIMELINE_V0.6.1_QA.md)、[v0.6.0 媒体验收](docs/TIMELINE_V0.6_QA.md)、[v0.5.0 时间轴验收](docs/TIMELINE_V0.5_QA.md)及 [v0.4.0 收尾报告](docs/RELEASE_CLOSURE_v0.4.0.md)。
 
 最终文件统一放在项目的 `release-output/`：
 

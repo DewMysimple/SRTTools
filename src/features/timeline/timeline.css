@@ -2,6 +2,17 @@
 .timeline-main .content-container { max-width: 1460px; }
 .timeline-workspace { display: grid; gap: 10px; min-width: 0; }
 .timeline-protection { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+.timeline-precision { display: grid; gap: 5px; min-width: 0; }
+.timeline-split-form, .media-preview-options { display: grid; gap: 8px; }
+.timeline-split-form textarea { width: 100%; }
+.media-preview-options label { display: flex; align-items: center; gap: 5px; }
+.media-preview-options input[type="number"] { width: 5.5rem; }
+.timeline-calibration { display: grid; gap: 8px; }
+.timeline-calibration[hidden] { display: none; }
+.timeline-calibration form, .timeline-calibration-result { display: grid; gap: 8px; }
+.timeline-calibration-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.timeline-calibration-fields fieldset { min-width: 0; display: grid; gap: 5px; }
+.timeline-calibration-fields button { justify-self: start; }
 .timeline-recovery { display: grid; gap: 8px; max-height: min(54vh, 430px); overflow: auto; }
 .timeline-recovery-row, .timeline-recovery-detail { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; padding-top: 8px; border-top: 1px solid var(--border); }
 .timeline-recovery-detail h3 { margin: 0; font-size: 14px; }

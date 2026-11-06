@@ -1,5 +1,8 @@
 import { createId, type SubtitleCue, type SubtitleDocument } from '../../../core/models';
 import { validateCueTime } from '../../../core/time';
+import { serializeSubtitle } from '../../../core/serializer';
+import { hasVisibleText } from '../../../core/text';
+import { assertSplitTime } from './precision-timing';
 
 export type EditMode = 'move' | 'trim-start' | 'trim-end';
 
@@ -153,4 +156,23 @@ export function insertCue(session: EditingSession, playheadMs: number): EditingS
   const cue = { id: createId(), index: position + 1, startMs, endMs: startMs + 2000, text: '' };
   assertTimes(cue);
   return commit(session, [{ after: { position, cue } }]);
+}
+
+export function splitCue(session: EditingSession, id: string, timeMs: number, leftText: string, rightText: string) {
+  const position = session.document.cues.findIndex(cue => cue.id === id);
+  if (position < 0) throw new Error('选中字幕已变化，请重新选择。');
+  const cue = session.document.cues[position];
+  assertSplitTime(cue, timeMs);
+  if (!hasVisibleText(leftText) || !hasVisibleText(rightText)) throw new Error('拆分后的两条字幕都需要可见正文。');
+  const left = { ...cue, endMs: timeMs, text: leftText };
+  const right = { ...cue, id: createId(), index: position + 2, startMs: timeMs, text: rightText };
+  // Reuse the SRT roundtrip guard to catch separators and timestamp-like prose.
+  serializeSubtitle({ ...session.document, cues: [left, right] }, 'srt');
+  return {
+    session: commit(session, [
+      { before: { position, cue }, after: { position, cue: left } },
+      { after: { position: position + 1, cue: right } },
+    ]),
+    right,
+  };
 }

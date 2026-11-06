@@ -230,6 +230,14 @@ try {
       $report.recoveryExternalSha256=$smoke.recoveryExternalSha256
       $report.recoveryMeasurements=$smoke.recoveryMeasurements
     }
+    if ([version]$ExpectedVersion -ge [version]'0.7.0') {
+      foreach ($name in @('minimumWindowNavigation','liveMediaEndpointsAndNearest','selectedPlaybackAndSavedAB','unicodeSplitAndUndo','stalePreviewAndCalibration','calibratedDraftAfterForceExit','exactExportAndSourceHashes')) {
+        Assert-Condition ($smoke.precisionChecks.$name -is [bool] -and $smoke.precisionChecks.$name) 'A required installed precision proof was missing.'
+      }
+      $report.precisionChecks=$smoke.precisionChecks
+      $report.precisionSourceSha256=$smoke.precisionSourceSha256
+      $report.precisionOutputSha256=$smoke.precisionOutputSha256
+    }
     Assert-Condition ($smoke.existingSettingsAndPresetsReadBefore -eq $true -and $smoke.existingSettingsAndPresetsReadAfter -eq $true) 'The installed app did not actually preserve/read existing settings and both preset kinds.'
     $report.checks.existingSettingsAndPresetsReadByApp=$true
   }

@@ -22,6 +22,7 @@ export class TimelineClock {
 }
 
 export function mediaTimeMs(seconds: number): number | undefined {
+  if (!Number.isFinite(seconds) || seconds < 0) return undefined;
   const timeMs = Math.floor(seconds * 1000 + 1e-6);
   return Number.isSafeInteger(timeMs) && timeMs >= 0 ? timeMs : undefined;
 }
@@ -31,6 +32,19 @@ export function validateLoop(startMs: number, endMs: number, durationMs: number)
     throw new Error('循环需满足 0 ≤ A < B ≤ 视频总时长。');
   }
   return { startMs, endMs };
+}
+
+export function selectedPreviewRange(cue: LoopRange, beforeMs: number, afterMs: number, durationMs: number): LoopRange {
+  if (![beforeMs, afterMs].every(ms => Number.isSafeInteger(ms) && ms >= 0 && ms <= 5000)) {
+    throw new Error('区间留白须为 0–5000 的整数毫秒。');
+  }
+  if (!Number.isSafeInteger(durationMs) || durationMs <= 0) throw new Error('请先关联有有效时长的视频。');
+  if (!Number.isSafeInteger(cue.startMs) || !Number.isSafeInteger(cue.endMs) ||
+    cue.startMs < 0 || cue.startMs >= cue.endMs || cue.startMs >= durationMs) {
+    throw new Error('选中字幕的有效区间不在视频范围内。');
+  }
+  const endMs = Math.min(cue.endMs, durationMs);
+  return { startMs: Math.max(0, cue.startMs - beforeMs), endMs: endMs + Math.min(afterMs, durationMs - endMs) };
 }
 
 interface SeekIntent {
@@ -59,4 +73,6 @@ export class SeekQueue {
   cancelResume() {
     if (this.pending) this.pending.resume = false;
   }
+
+  clear() { this.pending = undefined; }
 }

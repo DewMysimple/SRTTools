@@ -1,10 +1,13 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react';
 import type { SubtitleCue } from '../../core/models';
 import { formatTimestamp } from '../../core/time';
 
 const ROW_HEIGHT = 46;
 
-export const SubtitleList = memo(function SubtitleList({ cues, selectedIds, overlapping, disabled, onSelect }: {
+export interface SubtitleListHandle { reveal: (id: string) => void }
+
+export const SubtitleList = memo(function SubtitleList({ ref, cues, selectedIds, overlapping, disabled, onSelect }: {
+  ref?: Ref<SubtitleListHandle>;
   cues: readonly SubtitleCue[];
   selectedIds: readonly string[];
   overlapping: ReadonlySet<string>;
@@ -25,6 +28,12 @@ export const SubtitleList = memo(function SubtitleList({ cues, selectedIds, over
   const maxTop = Math.max(0, rows.length * ROW_HEIGHT - height);
   const start = Math.max(0, Math.floor(Math.min(scrollTop, maxTop) / ROW_HEIGHT) - 2);
   const end = Math.min(rows.length, start + Math.ceil(height / ROW_HEIGHT) + 5);
+
+  useImperativeHandle(ref, () => ({
+    reveal(id) {
+      if (search && !rows.some(({ cue }) => cue.id === id)) setSearch('');
+    },
+  }), [rows, search]);
 
   useLayoutEffect(() => {
     const element = list.current;

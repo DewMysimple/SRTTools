@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { parseTimestamp } from '../src/core/time';
 
 const source = [
   ['00:00:01,000', '00:00:02,500', '第一行 🐱\n第二行'],
@@ -216,4 +217,58 @@ test('10,000 cues keep the editor stable while media plays in a compact window',
   await page.getByRole('button', { name: '展开画面' }).click();
   await expect(page.getByRole('button', { name: '另存为' })).toBeVisible();
   await expect(page.locator('video')).toBeVisible();
+});
+
+test('live capture and selected preview use the video clock and leave the saved A/B intact', async ({ page }, info) => {
+  await openWorkspace(page, info);
+  const video = page.locator('video');
+  const start = page.getByLabel('开始时间', { exact: true });
+  const end = page.getByLabel('结束时间', { exact: true });
+  await jump(page, '00:00:01.125');
+  await expect(page.getByText('视频已暂停', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '将当前时间设为开始' }).click();
+  await expect(start).toHaveValue('00:00:01.125');
+  await expect(end).toHaveValue('00:00:02.500');
+  await expect(page.getByLabel('时间轴光标时间')).toHaveText('00:00:01.125');
+  await page.getByText('A/B 区间循环', { exact: true }).click();
+  await page.getByLabel('A 点', { exact: true }).fill('00:00:05.000');
+  await page.getByLabel('B 点', { exact: true }).fill('00:00:07.000');
+  await page.getByRole('button', { name: '应用循环' }).click();
+  await expect(page.locator('.timeline-loop-marker')).toHaveCount(2);
+  const play = page.getByRole('button', { name: '预览选中字幕', exact: true });
+  await play.press('Shift+Space');
+  await expect(page.getByText('正在预览选中字幕 · A/B 暂停')).toBeVisible();
+  await expect(page.getByText('视频已暂停', { exact: true })).toBeVisible({ timeout: 6000 });
+  await expect(page.getByRole('button', { name: '停止区间预览' })).toHaveCount(0);
+  await expect.poll(async () => Math.abs(parseTimestamp(await page.getByLabel('时间轴光标时间').innerText()) - 2900)).toBeLessThanOrEqual(10);
+  await expect(page.getByText('A/B 区间循环 · 已启用')).toBeVisible();
+  await page.getByRole('button', { name: '播放视频', exact: true }).click();
+  await expect.poll(async () => video.evaluate(element => (element as HTMLVideoElement).currentTime)).toBeGreaterThanOrEqual(5);
+  await page.getByRole('button', { name: '暂停视频', exact: true }).click();
+
+  await page.getByText('选中字幕预览设置', { exact: true }).click();
+  await page.getByRole('checkbox', { name: '循环预览', exact: true }).check();
+  await video.evaluate(element => {
+    element.dataset.previewSeeks = '0';
+    element.addEventListener('seeked', () => {
+      if ((element as HTMLVideoElement).currentTime < 0.85) {
+        element.dataset.previewSeeks = String(Number(element.dataset.previewSeeks) + 1);
+      }
+    });
+  });
+  await play.click();
+  await expect.poll(async () => Number(await video.getAttribute('data-preview-seeks')), { timeout: 8000 }).toBeGreaterThanOrEqual(2);
+  await jump(page, '00:00:04.200');
+  await expect(page.getByRole('button', { name: '停止区间预览' })).toHaveCount(0);
+  await expect(page.getByText('视频已暂停', { exact: true })).toBeVisible();
+  await expect(page.locator('.timeline-loop-marker')).toHaveCount(2);
+  await play.click();
+  await expect(page.getByRole('button', { name: '停止区间预览' })).toBeVisible();
+  await page.getByRole('button', { name: '下一条', exact: true }).click();
+  await expect(page.getByRole('button', { name: '停止区间预览' })).toHaveCount(0);
+  await play.click();
+  await expect(page.getByRole('button', { name: '停止区间预览' })).toBeVisible();
+  await page.getByRole('button', { name: '关闭视频', exact: true }).click();
+  await expect(video).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, 'mediaReleases'))).toEqual(['1']);
 });

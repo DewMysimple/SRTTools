@@ -1,8 +1,9 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type Ref } from 'react';
 import { errorText } from '../../components/common';
+import type { SubtitleCue } from '../../core/models';
 import { formatTimestamp, parseTimestamp } from '../../core/time';
 import type { CueIndex } from './core/cue-index';
-import { validateLoop, type LoopRange, type TimelineClock } from './core/media-timing';
+import { selectedPreviewRange, validateLoop, type LoopRange, type TimelineClock } from './core/media-timing';
 import { chooseVideo, releaseVideo, resetVideo, type VideoSource } from './media-service';
 import { attachMediaSync, loadingState, type MediaStatus } from './media-sync';
 
@@ -10,12 +11,15 @@ export interface MediaPreviewHandle {
   open: () => Promise<void>;
   close: () => Promise<void>;
   seek: (timeMs: number) => boolean;
+  captureTime: () => number | undefined;
+  previewSelection: () => void;
 }
 
 interface Props {
   ref?: Ref<MediaPreviewHandle>;
   clock: TimelineClock;
   index: CueIndex;
+  selection?: SubtitleCue;
   selecting: boolean;
   onSelecting: (selecting: boolean) => void;
   onPresence: (active: boolean) => void;
@@ -47,7 +51,7 @@ function MediaPosition({ clock, duration, seek }: { clock: TimelineClock; durati
   </label>;
 }
 
-export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPresence, onDuration, onLoop }: Props) {
+export function MediaPreview({ ref, clock, index, selection, selecting, onSelecting, onPresence, onDuration, onLoop }: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const playback = useRef<ReturnType<typeof attachMediaSync> | null>(null);
   const lifecycle = useRef({ epoch: 0, pending: false, source: null as VideoSource | null });
@@ -63,6 +67,10 @@ export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPres
   const [loopStart, setLoopStart] = useState('');
   const [loopEnd, setLoopEnd] = useState('');
   const [loop, setLoop] = useState<LoopRange>();
+  const [previewing, setPreviewing] = useState(false);
+  const [repeatSelection, setRepeatSelection] = useState(false);
+  const [preRoll, setPreRoll] = useState('400');
+  const [postRoll, setPostRoll] = useState('400');
   const present = !!source || selecting || !!error;
 
   useEffect(() => { onPresence(present); }, [onPresence, present]);
@@ -84,6 +92,7 @@ export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPres
     setLoopStart('');
     setLoopEnd('');
     setJump('');
+    setPreviewing(false);
   }
 
   async function close() {
@@ -151,6 +160,7 @@ export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPres
     const controller = attachMediaSync(element, clock, {
       state: setState,
       error: (message, fatal) => onPlaybackError(message, fatal),
+      preview: setPreviewing,
     });
     playback.current = controller;
     element.src = source.url;
@@ -161,6 +171,10 @@ export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPres
     };
   }, [source, clock]);
 
+  useLayoutEffect(() => {
+    playback.current?.stopPreview();
+  }, [selection?.id, selection?.startMs, selection?.endMs]);
+
   function seek(timeMs: number) {
     return playback.current?.seek(timeMs) ?? false;
   }
@@ -170,7 +184,22 @@ export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPres
     playback.current?.setLoop(range);
   }
 
-  useImperativeHandle(ref, () => ({ open, close, seek }));
+  function captureTime() {
+    if (lifecycle.current.pending) throw new Error('请先完成视频选择。');
+    if (!lifecycle.current.source) return undefined;
+    if (!playback.current) throw new Error('视频时间尚未就绪，请等待加载。');
+    return playback.current.captureTime();
+  }
+
+  function previewSelection() {
+    if (!selection) throw new Error('请先选择一条字幕。');
+    if (selecting || !playback.current) throw new Error('请先关联视频。');
+    const range = selectedPreviewRange(selection, preRoll ? Number(preRoll) : NaN, postRoll ? Number(postRoll) : NaN, state.durationMs);
+    setError('');
+    playback.current.startPreview(range, repeatSelection);
+  }
+
+  useImperativeHandle(ref, () => ({ open, close, seek, captureTime, previewSelection }));
 
   if (!present) return null;
   const canPlay = !selecting && state.durationMs > 0;
@@ -217,6 +246,21 @@ export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPres
         }} /></label>
       </div>
       <MediaPosition clock={clock} duration={state.durationMs} seek={seek} />
+      <details className="media-loop">
+        <summary>选中字幕预览设置{previewing ? ' · 播放中' : ''}</summary>
+        <div className="media-preview-options">
+          <label>前留白（毫秒）<input type="number" min={0} max={5000} step={1} value={preRoll}
+            onChange={event => setPreRoll(event.target.value)} /></label>
+          <label>后留白（毫秒）<input type="number" min={0} max={5000} step={1} value={postRoll}
+            onChange={event => setPostRoll(event.target.value)} /></label>
+          <label className="check-label"><input type="checkbox" checked={repeatSelection}
+            onChange={event => setRepeatSelection(event.target.checked)} />循环预览</label>
+        </div>
+      </details>
+      {previewing && <div className="media-controls">
+        <span role="status">正在预览选中字幕{loop ? ' · A/B 暂停' : ''}</span>
+        <button type="button" className="button secondary small" onClick={() => playback.current?.stopPreview()}>停止区间预览</button>
+      </div>}
       <form className="timeline-jump media-jump" onSubmit={event => {
         event.preventDefault();
         try { seek(parseTimestamp(jump)); setError(''); } catch (problem) { setError(errorText(problem)); }

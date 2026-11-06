@@ -226,3 +226,30 @@ test('disabling protection preserves existing recovery without saving new edits'
   await page.waitForTimeout(1350);
   expect((await receipts(page))[0].draft.cues[0].text).toBe('保留的草稿');
 });
+
+test('one confirmed calibration revision survives a restart and exports through the draft lifecycle', async ({ page }) => {
+  await mockNative(page);
+  await page.goto('/#/timeline');
+  await open(page);
+  await page.getByRole('button', { name: '两点校准', exact: true }).click();
+  for (const [label, value] of [
+    ['字幕锚点 1', '0'], ['目标锚点 1', '0'], ['字幕锚点 2', '10000'], ['目标锚点 2', '10500'],
+  ]) await page.getByLabel(label, { exact: true }).fill(value);
+  await page.getByRole('button', { name: '计算校准预览' }).click();
+  expect(await receipts(page)).toHaveLength(0);
+  await page.getByRole('button', { name: '应用两点校准' }).click();
+  await expect(page.getByText(/^草稿已保护/)).toBeVisible();
+  const [saved] = await receipts(page);
+  expect(saved.draft.revision).toBe(1);
+  expect(saved.draft.cues.map((item: { startMs: number; endMs: number; text: string }) => [item.startMs, item.endMs, item.text]))
+    .toEqual([[1050, 3150, '原稿 🐱'], [4200, 6300, '第二条']]);
+  await page.reload();
+  await manage(page).click();
+  await page.getByRole('button', { name: '恢复草稿', exact: true }).click();
+  await page.getByRole('button', { name: '确认恢复到时间轴' }).click();
+  await expect(page.getByLabel('开始时间', { exact: true })).toHaveValue('00:00:01.050');
+  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await expect.poll(() => receipts(page)).toHaveLength(0);
+  const bytes = await page.evaluate(() => Reflect.get(window, 'recoveryState').exports[0]);
+  expect(Buffer.from(bytes).toString('utf8')).toContain('00:00:01,050 --> 00:00:03,150\r\n原稿 🐱');
+});

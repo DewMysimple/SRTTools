@@ -182,7 +182,7 @@ export function DraftRecoveryPanel({ inventory, problem, refresh, document, acti
       {dirty && <NoticeBox kind="warning">请先导出当前编辑，再恢复其他草稿。</NoticeBox>}
       {detail.diff && <SubtitleDiffPreview
         key={detail.row.draftId} before={detailMatches ? document!.cues : detail.loaded.draft.original} after={detail.loaded.draft.cues}
-        trustIds={!detailMatches} beforeLabel={detailMatches ? '当前磁盘版本（已打开）' : '开始编辑时的原稿'}
+        trustIds={!detailMatches} beforeLabel={detailMatches ? '本次打开时的源字幕' : '开始编辑时的原稿'}
         afterLabel="本地保护草稿" partialOutput={false} />}
       <div className="button-row">
         <button type="button" className="button primary small" disabled={disabled || dirty} onClick={restore}>

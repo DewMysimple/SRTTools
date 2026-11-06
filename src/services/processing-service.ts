@@ -1,6 +1,7 @@
 import type { ParseDiagnostic, SubtitleDocument } from '../core';
 import { MAX_IMPORT_FILES, MAX_IMPORT_TOTAL_BYTES, type ImportedFile } from './file-service';
 import { workflowDefinitionSchema, type WorkflowDefinition, type WorkflowStepProgress, type WorkflowStepSummary } from '../core/workflow';
+import type { CalibrationAnchors, CalibrationPreview, CueTiming } from '../features/timeline/core/precision-calibration';
 
 export const MAX_WORKER_DURATION_MS = 60_000;
 
@@ -49,9 +50,18 @@ export interface ProcessingRequest {
   workflow?: WorkflowDefinition;
 }
 
-export interface WorkerReply {
+export interface CalibrationRequest {
+  kind: 'calibration';
+  cues: CueTiming[];
+  anchors: CalibrationAnchors;
+  selectedIds?: string[];
+}
+
+export type WorkerRequest = ProcessingRequest | CalibrationRequest;
+
+export interface WorkerReply<Result = ProcessedTask> {
   requestId: string;
-  result?: ProcessedTask;
+  result?: Result;
   error?: string;
   progress?: WorkflowStepProgress;
 }
@@ -70,13 +80,24 @@ function abortError(): DOMException {
 }
 
 export function runWorkerRequest(request: ProcessingRequest, signal?: AbortSignal, onStepProgress?: (progress: WorkflowStepProgress) => void): Promise<ProcessedTask> {
+  return dispatchWorker<ProcessedTask>(request, signal, onStepProgress);
+}
+
+export function runCalibrationWorker(request: CalibrationRequest, signal?: AbortSignal): Promise<CalibrationPreview> {
+  return dispatchWorker<CalibrationPreview>(request, signal);
+}
+
+function dispatchWorker<Result>(request: WorkerRequest, signal?: AbortSignal, onStepProgress?: (progress: WorkflowStepProgress) => void): Promise<Result> {
   if (signal?.aborted) return Promise.reject(abortError());
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/subtitle.worker.ts', import.meta.url), { type: 'module' });
     const requestId = globalThis.crypto.randomUUID();
     const timeout = setTimeout(() => {
       cleanup();
-      reject(Object.assign(new Error('此文件处理超过 60 秒，已停止当前任务。请缩短正则表达式、减少步骤或拆分文件后重试。'), { code: 'WORKER_TIMEOUT' }));
+      const message = request.kind === 'calibration'
+        ? '校准预览超过 60 秒，已停止计算。请缩小范围或分段后重试。'
+        : '此文件处理超过 60 秒，已停止当前任务。请缩短正则表达式、减少步骤或拆分文件后重试。';
+      reject(Object.assign(new Error(message), { code: 'WORKER_TIMEOUT' }));
     }, MAX_WORKER_DURATION_MS);
     const cleanup = () => {
       clearTimeout(timeout);
@@ -85,7 +106,7 @@ export function runWorkerRequest(request: ProcessingRequest, signal?: AbortSigna
     };
     const onAbort = () => { cleanup(); reject(abortError()); };
     signal?.addEventListener('abort', onAbort, { once: true });
-    worker.onmessage = (event: MessageEvent<WorkerReply>) => {
+    worker.onmessage = (event: MessageEvent<WorkerReply<Result>>) => {
       if (event.data.requestId !== requestId) return;
       if (event.data.progress) { onStepProgress?.(event.data.progress); return; }
       cleanup();

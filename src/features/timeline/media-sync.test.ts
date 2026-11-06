@@ -42,10 +42,11 @@ function setup(video = new TestVideo()) {
   const clock = new TimelineClock();
   const states: PlaybackState[] = [];
   const error = vi.fn();
+  const preview = vi.fn();
   const controller = attachMediaSync(video as unknown as HTMLVideoElement, clock, {
-    state: next => states.push(next), error,
+    state: next => states.push(next), error, preview,
   });
-  return { video, clock, controller, error, tick, state: () => states.at(-1)?.status };
+  return { video, clock, controller, error, preview, tick, state: () => states.at(-1)?.status };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -137,5 +138,64 @@ describe('HTML media clock', () => {
     video.error = { code: 4 };
     video.emit('error');
     expect(error).toHaveBeenLastCalledWith(expect.stringContaining('无法解码'), true);
+  });
+
+  it('captures the live element at action time and refuses pending seeks or invalid values', () => {
+    const { video, controller, clock, tick } = setup();
+    expect(() => controller.captureTime()).toThrow('尚未就绪');
+    video.emit('loadedmetadata');
+    video.currentTime = 2.1239;
+    expect(clock.read()).toBe(0);
+    expect(controller.captureTime()).toBe(2123);
+    controller.seek(3500);
+    expect(() => controller.captureTime()).toThrow('正在跳转');
+    tick();
+    video.emit('seeked');
+    expect(controller.captureTime()).toBe(3500);
+    video.currentTime = NaN;
+    expect(() => controller.captureTime()).toThrow('无效');
+  });
+
+  it('plays a selected range once, stops at its end and resumes the saved A/B only on play', async () => {
+    const { video, controller, clock, preview, tick } = setup();
+    video.emit('loadedmetadata');
+    controller.setLoop({ startMs: 4000, endMs: 6000 });
+    controller.startPreview({ startMs: 1000, endMs: 2000 }, false);
+    tick();
+    expect(video.currentTime).toBe(1);
+    video.emit('seeked');
+    expect(video.paused).toBe(false);
+    video.currentTime = 2.03;
+    video.emit('timeupdate');
+    expect(video.paused).toBe(true);
+    expect(preview.mock.calls).toEqual([[true], [false]]);
+    tick();
+    video.emit('seeked');
+    expect(clock.read()).toBe(2000);
+    await controller.toggle();
+    tick();
+    expect(video.currentTime).toBe(4);
+  });
+
+  it('loops a selected range through media end and cancels queued playback on a manual seek', () => {
+    const { video, controller, preview, tick } = setup();
+    video.emit('loadedmetadata');
+    controller.startPreview({ startMs: 7000, endMs: 8000 }, true);
+    tick();
+    video.emit('seeked');
+    video.currentTime = 8;
+    video.paused = video.ended = true;
+    video.emit('ended');
+    tick();
+    expect(video.currentTime).toBe(7);
+    video.ended = false;
+    video.emit('seeked');
+    expect(video.paused).toBe(false);
+    controller.seek(1500);
+    tick();
+    video.emit('seeked');
+    expect(video.currentTime).toBe(1.5);
+    expect(video.paused).toBe(true);
+    expect(preview).toHaveBeenLastCalledWith(false);
   });
 });

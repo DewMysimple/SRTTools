@@ -2,7 +2,7 @@
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
   [string] $ExpectedVersion,
-  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline', 'media', 'recovery')][string] $Scenario = 'smoke',
+  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline', 'media', 'recovery', 'precision')][string] $Scenario = 'smoke',
   [string] $NsisPath,
   [switch] $AllowUnavailableContextMenu,
   [switch] $PreserveExistingStore,
@@ -442,6 +442,9 @@ try {
     if ($draftProfilePath) {
       . (Join-Path $PSScriptRoot 'windows-recovery-steps.ps1')
     }
+    if ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.7.0') {
+      . (Join-Path $PSScriptRoot 'windows-precision-steps.ps1')
+    }
     if ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.5.0') {
       . (Join-Path $PSScriptRoot 'windows-timeline-steps.ps1')
     }
@@ -450,6 +453,11 @@ try {
   } elseif ($Scenario -eq 'recovery') {
     Assert-Condition ([bool]$draftProfilePath) 'Recovery smoke requires an expected version of 0.6.1 or later.'
     . (Join-Path $PSScriptRoot 'windows-recovery-steps.ps1')
+  } elseif ($Scenario -eq 'precision') {
+    Assert-Condition ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.7.0') 'Precision smoke requires an expected version of 0.7.0 or later.'
+    . (Join-Path $PSScriptRoot 'windows-media-steps.ps1')
+    . (Join-Path $PSScriptRoot 'windows-recovery-steps.ps1')
+    . (Join-Path $PSScriptRoot 'windows-precision-steps.ps1')
   } elseif ($Scenario -eq 'timeline') {
     . (Join-Path $PSScriptRoot 'windows-timeline-steps.ps1')
   } elseif ($Scenario -eq 'closure') {

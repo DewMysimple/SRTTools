@@ -59,6 +59,21 @@ function Recovery-Payload($Item) {
   Assert-Condition ($actual -ceq [BitConverter]::ToString($raw, 16, 32)) 'Draft payload did not match SHA-256.'
   [Text.Encoding]::UTF8.GetString($raw, 48, $raw.Length - 48) | ConvertFrom-Json
 }
+function Restart-RecoveryHost {
+  $oldPid = $process.Id
+  Stop-Process -Id $oldPid -ErrorAction Stop
+  Assert-Condition ($process.WaitForExit(10000)) 'Could not terminate the owned application process.'
+  $profilePath = Join-Path $testRoot 'webview'
+  Wait-Condition {
+    @(Get-CimInstance Win32_Process -Filter "name='msedgewebview2.exe'" | Where-Object {
+      $_.CommandLine -and $_.CommandLine.IndexOf($profilePath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    }).Count -eq 0
+  } 'WebView2 profile writers remained after the forced application exit.' 12000 | Out-Null
+  $script:process = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru
+  Assert-Condition ($process.Id -ne $oldPid) 'The acceptance did not start a new application process.'
+  $script:application = Get-ApplicationWindow $process
+  $script:applicationHandle = [IntPtr]::new($application.Current.NativeWindowHandle)
+}
 
 $stage = 'draft-atomic-protection'
 $recoverySource = Join-Path $testRoot '恢复 草稿 (🐱).srt'
@@ -103,19 +118,7 @@ Assert-Condition ($latestSnapshot.draft.revision -eq 2 -and $latestSnapshot.draf
 Recovery-Pass 'exclusiveLockAndRetry'
 
 $stage = 'draft-abrupt-restart'
-$oldPid = $process.Id
-Stop-Process -Id $oldPid -ErrorAction Stop
-Assert-Condition ($process.WaitForExit(10000)) 'Could not terminate the owned application process.'
-$profilePath = Join-Path $testRoot 'webview'
-Wait-Condition {
-  @(Get-CimInstance Win32_Process -Filter "name='msedgewebview2.exe'" | Where-Object {
-    $_.CommandLine -and $_.CommandLine.IndexOf($profilePath, [StringComparison]::OrdinalIgnoreCase) -ge 0
-  }).Count -eq 0
-} 'WebView2 profile writers remained after the forced application exit.' 12000 | Out-Null
-$process = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru
-Assert-Condition ($process.Id -ne $oldPid) 'The acceptance did not start a new application process.'
-$application = Get-ApplicationWindow $process
-$applicationHandle = [IntPtr]::new($application.Current.NativeWindowHandle)
+Restart-RecoveryHost
 if ($Scenario -eq 'workflow') {
   Assert-Condition ((Media-FileWritable $mediaSource) -and
     (Get-FileHash -LiteralPath $mediaSource -Algorithm SHA256).Hash -ceq $mediaSampleHash) 'Force exit did not release and preserve the source media.'
