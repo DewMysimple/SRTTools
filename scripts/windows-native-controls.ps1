@@ -107,12 +107,20 @@ function Select-Option([string] $Field, [string] $Label) {
   # WebView2 sometimes keeps a native popup outside the UIA tree. Exercise
   # the actual keyboard selection only while the owned combo has focus.
   Add-Type -AssemblyName System.Windows.Forms
-  [void][SubtitleSmokeNative]::SetForegroundWindow($applicationHandle)
-  $control.SetFocus()
+  $ownsFocus = {
+    [SubtitleSmokeNative]::GetForegroundWindow() -eq $applicationHandle -and
+      [System.Windows.Automation.Automation]::Compare($control, $element::FocusedElement)
+  }
+  Wait-Condition {
+    if (& $ownsFocus) { return $true }
+    [void][SubtitleSmokeNative]::SetForegroundWindow($applicationHandle)
+    $control.SetFocus()
+    Start-Sleep -Milliseconds 90
+    & $ownsFocus
+  } ('The owned native combo box did not acquire keyboard focus: ' + $Field) 3000 | Out-Null
   $value = $control.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
   for ($index = 0; $index -lt 53; $index++) {
-    Assert-Condition ([SubtitleSmokeNative]::GetForegroundWindow() -eq $applicationHandle -and
-      [System.Windows.Automation.Automation]::Compare($control, $element::FocusedElement)) 'The owned native combo box did not hold keyboard focus.'
+    Assert-Condition (& $ownsFocus) 'The owned native combo box lost keyboard focus.'
     [Windows.Forms.SendKeys]::SendWait($(if ($index -eq 0) { '{HOME}' } else { '{DOWN}' }))
     Start-Sleep -Milliseconds 55
     if ($value.Current.Value -ceq $Label) { return }
