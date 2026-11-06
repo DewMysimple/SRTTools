@@ -15,7 +15,10 @@ function Recovery-Open([string] $Path) {
 function Recovery-Edit([string] $Value) {
   (Recovery-Field '字幕正文').SetValue($Value)
   Click-Control '应用编辑'
-  Wait-Condition { (Recovery-Field '字幕正文').Current.Value -ceq $Value } 'Inspector edit was not applied.' | Out-Null
+  Wait-Condition { (Read-RecoveryText) -ceq $Value } 'Inspector edit was not applied.' | Out-Null
+}
+function Read-RecoveryText {
+  (Recovery-Field '字幕正文').Current.Value -replace '\r\n?', [string][char]10
 }
 function Recovery-Latest([int] $Revision = 0) {
   Get-ChildItem -LiteralPath $draftProfilePath -File -Filter '*.draft' -ErrorAction SilentlyContinue |
@@ -24,6 +27,14 @@ function Recovery-Latest([int] $Revision = 0) {
 }
 function Recovery-Protected([int] $Revision) {
   Wait-Condition {
+    $failure = Find-Text '^草稿保护失败'
+    if ($failure -and $failure.Current) {
+      $texts = @($application.FindAll($scope::Descendants, (Condition $element::ControlTypeProperty $types::Text)) |
+        ForEach-Object { [string]$_.Current.Name })
+      $index = [Array]::IndexOf($texts, [string]$failure.Current.Name)
+      $detail = ($texts | Select-Object -Skip ([Math]::Max(0, $index)) -First 3) -join ' '
+      throw ('Draft protection reported: ' + $detail)
+    }
     $item = Recovery-Latest $Revision
     if ($item -and (Find-Text '^草稿已保护')) { $item }
   } 'Draft protection did not acknowledge the on-disk revision.'
@@ -51,6 +62,12 @@ $timelineLink = Get-Control '字幕时间轴' $types::Hyperlink
 $timelineLink.GetCurrentPattern($invoke).Invoke()
 Recovery-Open $recoverySource
 Wait-Condition { (Recovery-Field '开始时间').Current.Value -ceq '00:00:02.000' } 'Synthetic recovery source did not open.' | Out-Null
+$report.checks.import = $true
+if ($Scenario -eq 'workflow') {
+  Click-Control '关联视频'
+  Select-DialogPath '选择本地视频' $mediaSource
+  Wait-Condition { (Find-Text '^视频就绪$') -and !(Media-FileWritable $mediaSource) } 'A real recovery media session was not attached.' | Out-Null
+}
 Recovery-Edit "已保护正文 🐱`n第二行"
 $protected = Recovery-Protected 1
 $firstSnapshot = Recovery-Payload $protected
@@ -61,6 +78,7 @@ Start-Sleep -Milliseconds 1450
 Assert-Condition (!(Recovery-Latest 2)) 'Uncommitted inspector input reached disk.'
 Click-Control '取消编辑'
 Recovery-Pass 'committedOnlyAndVerified'
+$report.checks.process = $true
 
 $stage = 'draft-native-file-lock'
 $locked = [IO.File]::Open($protected.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
@@ -90,6 +108,10 @@ $process = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru
 Assert-Condition ($process.Id -ne $oldPid) 'The acceptance did not start a new application process.'
 $application = Get-ApplicationWindow $process
 $applicationHandle = [IntPtr]::new($application.Current.NativeWindowHandle)
+if ($Scenario -eq 'workflow') {
+  Assert-Condition ((Media-FileWritable $mediaSource) -and
+    (Get-FileHash -LiteralPath $mediaSource -Algorithm SHA256).Hash -ceq $mediaSampleHash) 'Force exit did not release and preserve the source media.'
+}
 (Get-Control '管理本地草稿' $types::Hyperlink).GetCurrentPattern($invoke).Invoke()
 Click-Control '查看差异'
 Wait-Condition { Find-Text '原字幕字节未变化' } 'Recovery did not find the exact original bytes after restart.' | Out-Null
@@ -107,7 +129,7 @@ Wait-Condition { Find-Text '草稿或来源状态已变化' } 'The source confli
 Click-Control '独立恢复并另存为'
 Wait-Condition {
   (Recovery-Field '开始时间').Current.Value -ceq '00:00:02.125' -and
-  (Recovery-Field '字幕正文').Current.Value -ceq "已保护正文 🐱`n第二行"
+  (Read-RecoveryText) -ceq "已保护正文 🐱`n第二行"
 } 'Recovered inspector did not contain the latest complete revision.' | Out-Null
 Assert-Condition (!(Find-Control '关闭视频' $types::Button)) 'A video grant survived the recovery restart.'
 Recovery-Pass 'externalConflictIndependent'
@@ -125,6 +147,8 @@ $expectedRecovery = "1`r`n00:00:02,125 --> 00:00:04,000`r`n已保护正文 🐱`
 Assert-Condition ([IO.File]::ReadAllText($recoveryOutput, $utf8) -ceq $expectedRecovery) 'Recovered export did not preserve edited times, Unicode or CRLF.'
 Assert-Condition ((Get-FileHash -LiteralPath $recoverySource -Algorithm SHA256).Hash -ceq $report.recoveryExternalSha256) 'Recovery overwrote the externally changed subtitle.'
 Recovery-Pass 'exportAndSourcePreservation'
+$report.checks.export = $true
+$report.originalPreserved = $true
 $report.preservedSourceCount = 1 + [int]$report.preservedSourceCount
 
 $stage = 'draft-missing-source'

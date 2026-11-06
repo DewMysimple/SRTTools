@@ -3,7 +3,7 @@ use super::{ensure_main, safe_files, INPUT_LIMIT};
 #[cfg(windows)]
 use super::{
     folder_export::directory_sentinel,
-    folder_import::{locked_open, locked_output_directory, LockedEntry, OpenFailure},
+    folder_import::{locked_open, locked_output_directory, within, LockedEntry, OpenFailure},
     media::local_path,
 };
 use serde::{Deserialize, Serialize};
@@ -774,24 +774,44 @@ fn with_root<T>(path: &Path, work: impl FnOnce(&Path) -> Result<T, String>) -> R
         OpenFailure::Io(error) => io_message(error),
     };
     let mut guards = Vec::<LockedEntry>::new();
+    let mut redirected = false;
     for component in path.ancestors().collect::<Vec<_>>().into_iter().rev() {
         let scope = guards.last().map(|entry| entry.final_path.as_path());
-        match locked_output_directory(component, scope) {
-            Ok(guard) => guards.push(guard),
-            Err(OpenFailure::Io(error))
-                if error.kind() == io::ErrorKind::NotFound && scope.is_some() =>
-            {
+        // A Windows profile filter can back a new directory with another local volume.
+        // Open every logical component without following reparse points, then pin the
+        // backing ancestry separately before touching its contents.
+        let guard = match locked_output_directory(component, None) {
+            Ok(guard) => guard,
+            Err(OpenFailure::Io(error)) if error.kind() == io::ErrorKind::NotFound => {
+                let parent = scope.ok_or_else(|| io_message(error))?;
+                let _sentinel = directory_sentinel(parent)?;
                 match fs::create_dir(component) {
                     Ok(()) => {}
                     Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                     Err(error) => return Err(io_message(error)),
                 }
-                guards.push(locked_output_directory(component, scope).map_err(unsafe_path)?);
+                locked_output_directory(component, None).map_err(unsafe_path)?
             }
             Err(error) => return Err(unsafe_path(error)),
-        }
+        };
+        redirected |= scope.is_some_and(|parent| !within(parent, &guard.final_path));
+        guards.push(guard);
     }
     let root = &guards.last().ok_or("本地草稿目录不可用。")?.final_path;
+    let mut backing = Vec::<LockedEntry>::new();
+    if redirected {
+        if !local_path(root) {
+            return Err("草稿目录的实际位置必须在本机磁盘。".into());
+        }
+        for component in root.ancestors().collect::<Vec<_>>().into_iter().rev() {
+            let scope = backing.last().map(|entry| entry.final_path.as_path());
+            let guard = locked_output_directory(component, scope).map_err(unsafe_path)?;
+            if !within(component, &guard.final_path) || !within(&guard.final_path, component) {
+                return Err("草稿目录的实际位置不稳定，已暂停保护。".into());
+            }
+            backing.push(guard);
+        }
+    }
     let _sentinel = directory_sentinel(root)?;
     work(root)
 }
@@ -1190,5 +1210,22 @@ mod tests {
         };
         assert!(matches!(source_status(&denied), SourceStatus::Unverified));
         fs::remove_dir(link).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn normal_app_local_ancestry_supports_creating_and_reading_a_draft_root() {
+        let local = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap());
+        let root = local.join(format!("srttools-recovery-test-{}", id()));
+        let fixture = Fixture(root.clone());
+        with_root(&root.join("drafts"), |root| {
+            let key = id();
+            save(root, draft(&key, 1), None, publish)?;
+            assert_eq!(current(root, &key).0.unwrap().draft.revision, 1);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(fs::read_dir(root.join("drafts")).unwrap().count(), 1);
+        drop(fixture);
     }
 }

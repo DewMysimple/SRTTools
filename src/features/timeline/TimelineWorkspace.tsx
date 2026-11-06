@@ -360,7 +360,7 @@ export default function TimelineWorkspace() {
     </div>
     {busy && <p className="timeline-inline-note" role="status">正在读取或保存字幕…</p>}
     {error && <div role="alert"><NoticeBox kind="error">{error}</NoticeBox></div>}
-    {showRecovery && <DraftRecoveryPanel inventory={inventory} problem={inventoryError} refresh={refreshDrafts} document={document}
+    {showRecovery && <DraftRecoveryPanel inventory={inventory} problem={inventoryError} refresh={refreshDrafts} document={session?.original}
       activeId={recovery?.activeId} dirty={dirty} busy={busy} onRecover={restoreDraft} />}
     {recovery && (dirty || protection.kind !== 'idle') && <div className="timeline-protection" role="status">
       {protection.kind === 'error' ? <>

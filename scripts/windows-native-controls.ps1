@@ -120,7 +120,7 @@ function Select-Option([string] $Field, [string] $Label) {
     & $ownsFocus
   } ('The owned native combo box did not acquire keyboard focus: ' + $Field) 3000 | Out-Null
   # UIA focus can be reported before the underlying Chromium widget takes input.
-  $point = [Windows.Point]::new()
+  $point = [Windows.Point]::new(0.0, 0.0)
   if ($control.TryGetClickablePoint([ref]$point) -and [SubtitleDesktopInteraction]::ClickOwned($applicationHandle, [int]$point.X, [int]$point.Y)) {
     Start-Sleep -Milliseconds 110
   }

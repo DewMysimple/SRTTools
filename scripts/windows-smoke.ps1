@@ -2,7 +2,7 @@
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
   [string] $ExpectedVersion,
-  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline', 'media')][string] $Scenario = 'smoke',
+  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline', 'media', 'recovery')][string] $Scenario = 'smoke',
   [string] $NsisPath,
   [switch] $AllowUnavailableContextMenu,
   [switch] $PreserveExistingStore,
@@ -447,6 +447,9 @@ try {
     }
   } elseif ($Scenario -eq 'media') {
     . (Join-Path $PSScriptRoot 'windows-media-steps.ps1')
+  } elseif ($Scenario -eq 'recovery') {
+    Assert-Condition ([bool]$draftProfilePath) 'Recovery smoke requires an expected version of 0.6.1 or later.'
+    . (Join-Path $PSScriptRoot 'windows-recovery-steps.ps1')
   } elseif ($Scenario -eq 'timeline') {
     . (Join-Path $PSScriptRoot 'windows-timeline-steps.ps1')
   } elseif ($Scenario -eq 'closure') {
