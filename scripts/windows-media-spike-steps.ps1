@@ -14,9 +14,8 @@ $fixtureRoot = Join-Path $target 'media-gate-fixtures'
 [void](Assert-QANoReparse $fixtureRoot)
 $assets = @($fixed | ForEach-Object {
   $fixturePath = Join-Path $fixtureRoot $_.name
-  [void](Assert-QANoReparse $fixturePath)
-  $entry = Get-Item -LiteralPath $fixturePath
-  Assert-Condition (!$entry.PSIsContainer -and $entry.Length -gt 0) 'Media spike fixture is missing or empty.'
+  $entry = Get-Item -LiteralPath $fixturePath -Force
+  Assert-Condition (!$entry.PSIsContainer -and $entry.Length -gt 0 -and !($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) 'Media spike fixture must be a nonempty regular file.'
   [ordered]@{
     id=$_.id; file=$entry.FullName; expected=$_.expected; bytes=$entry.Length
     sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash
