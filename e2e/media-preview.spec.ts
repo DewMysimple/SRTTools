@@ -44,7 +44,11 @@ async function openWorkspace(page: Page, info: TestInfo, subtitles = source) {
           if (command === 'select_files') return [{ name: '媒体字幕.srt', bytes, size: bytes.length }];
           if (command === 'select_video') {
             selection++;
-            return selection === 2 ? null : { name: selection === 3 ? '损坏.mp4' : `测试视频 ${selection}.webm`, token: String(selection) };
+            if (selection === 2) {
+              await new Promise<void>(resolve => window.addEventListener('test-cancel-media-picker', () => resolve(), { once: true }));
+              return null;
+            }
+            return { name: selection === 3 ? '损坏.mp4' : `测试视频 ${selection}.webm`, token: String(selection) };
           }
           if (command === 'release_video') { releases.push(args.token!); return null; }
           if (command === 'save_output') return args.name;
@@ -145,9 +149,13 @@ test('A/B loops and file-picker cancellation or decode failure preserve edited s
   await expect(page.locator('.timeline-loop-marker')).toHaveCount(0);
   await page.getByLabel('字幕正文').fill('保留编辑 🐱');
   await page.getByRole('button', { name: '应用编辑' }).click();
-  await page.getByRole('button', { name: '更换视频' }).click();
+  const replaceVideo = page.getByRole('button', { name: '更换视频' });
+  await replaceVideo.click();
+  await expect(replaceVideo).toBeDisabled();
+  await page.evaluate(() => window.dispatchEvent(new Event('test-cancel-media-picker')));
+  await expect(replaceVideo).toBeEnabled();
   await expect(page.getByText('测试视频 1.webm')).toBeVisible();
-  await page.getByRole('button', { name: '更换视频' }).click();
+  await replaceVideo.click();
   await expect(page.getByRole('alert')).toContainText('无法解码');
   await expect(video).toHaveCount(0);
   await expect(page.getByLabel('字幕正文')).toHaveValue('保留编辑 🐱');

@@ -59,6 +59,7 @@ export default function TimelineWorkspace() {
   const selectionAnchor = useRef<string | null>(null);
   const [clock] = useState(() => new TimelineClock());
   const [mediaPresent, setMediaPresent] = useState(false);
+  const [choosingVideo, setChoosingVideo] = useState(false);
   const [mediaDuration, setMediaDuration] = useState(0);
   const [loopRange, setLoopRange] = useState<LoopRange>();
   const [inputEncoding, setInputEncoding] = useState('auto');
@@ -281,7 +282,7 @@ export default function TimelineWorkspace() {
       <div><h1>字幕时间轴</h1><p>本地 SRT 校时与编辑 · 单文件独立草稿</p></div>
       <div className="button-row timeline-actions">
         <button type="button" className="button secondary" disabled={busy} onClick={requestOpen}><FolderOpen size={16} />打开字幕</button>
-        {isDesktop() && <button type="button" className="button secondary" disabled={busy} onClick={() => void preview.current?.open()}>
+        {isDesktop() && <button type="button" className="button secondary" disabled={busy || choosingVideo} onClick={() => void preview.current?.open()}>
           <Film size={16} />{mediaPresent ? '更换视频' : '关联视频'}
         </button>}
         <button type="button" className="button secondary" disabled={controlsDisabled || !session?.past.length} onClick={() => edit(undo)}><Undo2 size={16} />撤销</button>
@@ -348,7 +349,8 @@ export default function TimelineWorkspace() {
           </select></label>
         </section>
       </>}
-      {isDesktop() && <MediaPreview ref={preview} clock={clock} index={index} onPresence={setMediaPresent} onDuration={setMediaDuration} onLoop={setLoopRange} />}
+      {isDesktop() && <MediaPreview ref={preview} clock={clock} index={index} selecting={choosingVideo} onSelecting={setChoosingVideo}
+        onPresence={setMediaPresent} onDuration={setMediaDuration} onLoop={setLoopRange} />}
     </div>
     {session && <>
       <TimelineView key={`track-${document?.id}`} ref={view} index={index} layout={layout} numbers={numbers} selectedIds={selectedIds}

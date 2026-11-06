@@ -16,6 +16,8 @@ interface Props {
   ref?: Ref<MediaPreviewHandle>;
   clock: TimelineClock;
   index: CueIndex;
+  selecting: boolean;
+  onSelecting: (selecting: boolean) => void;
   onPresence: (active: boolean) => void;
   onDuration: (durationMs: number) => void;
   onLoop: (range: LoopRange | undefined) => void;
@@ -45,13 +47,12 @@ function MediaPosition({ clock, duration, seek }: { clock: TimelineClock; durati
   </label>;
 }
 
-export function MediaPreview({ ref, clock, index, onPresence, onDuration, onLoop }: Props) {
+export function MediaPreview({ ref, clock, index, selecting, onSelecting, onPresence, onDuration, onLoop }: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const playback = useRef<ReturnType<typeof attachMediaSync> | null>(null);
   const lifecycle = useRef({ epoch: 0, pending: false, source: null as VideoSource | null });
   const preferences = useRef({ rate: 1, volume: 1, muted: false });
   const [source, setSource] = useState<VideoSource | null>(null);
-  const [busy, setBusy] = useState(false);
   const [state, setState] = useState(loadingState);
   const [error, setError] = useState('');
   const [collapsed, setCollapsed] = useState(false);
@@ -62,7 +63,7 @@ export function MediaPreview({ ref, clock, index, onPresence, onDuration, onLoop
   const [loopStart, setLoopStart] = useState('');
   const [loopEnd, setLoopEnd] = useState('');
   const [loop, setLoop] = useState<LoopRange>();
-  const present = !!source || busy || !!error;
+  const present = !!source || selecting || !!error;
 
   useEffect(() => { onPresence(present); }, [onPresence, present]);
   useEffect(() => { onDuration(source ? state.durationMs : 0); }, [onDuration, source, state.durationMs]);
@@ -94,7 +95,7 @@ export function MediaPreview({ ref, clock, index, onPresence, onDuration, onLoop
     playback.current?.dispose();
     resetVideo(video.current);
     setSource(null);
-    setBusy(false);
+    onSelecting(false);
     clearControls();
     setError('');
     if (grant) {
@@ -108,7 +109,7 @@ export function MediaPreview({ ref, clock, index, onPresence, onDuration, onLoop
     if (active.pending) return;
     const epoch = ++active.epoch;
     active.pending = true;
-    setBusy(true);
+    onSelecting(true);
     setError('');
     try {
       const selected = await chooseVideo();
@@ -128,7 +129,7 @@ export function MediaPreview({ ref, clock, index, onPresence, onDuration, onLoop
     } finally {
       if (epoch === active.epoch) {
         active.pending = false;
-        setBusy(false);
+        onSelecting(false);
       }
     }
   }
@@ -172,16 +173,16 @@ export function MediaPreview({ ref, clock, index, onPresence, onDuration, onLoop
   useImperativeHandle(ref, () => ({ open, close, seek }));
 
   if (!present) return null;
-  const canPlay = !busy && state.durationMs > 0;
+  const canPlay = !selecting && state.durationMs > 0;
   return <section className="timeline-card media-preview" aria-label="本地视频预览">
     <div className="timeline-panel-heading">
       <h2>视频预览</h2>
       {source && <div className="button-row">
         <button type="button" className="button secondary small" aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)}>{collapsed ? '展开画面' : '收起画面'}</button>
-        <button type="button" className="button secondary small" disabled={busy} onClick={() => void close()}>关闭视频</button>
+        <button type="button" className="button secondary small" disabled={selecting} onClick={() => void close()}>关闭视频</button>
       </div>}
     </div>
-    {busy && <p className="timeline-inline-note" role="status">正在选择视频…</p>}
+    {selecting && <p className="timeline-inline-note" role="status">正在选择视频…</p>}
     {error && <p className="field-error" role="alert">{error}</p>}
     {source && <>
       <p className="media-source-name" title={source.name}>{source.name}</p>

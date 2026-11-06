@@ -72,8 +72,8 @@ function Select-Option([string] $Field, [string] $Label) {
   } 'Native combo box was not ready for selection.'
   $control = $ready.control
   $expanded = $ready.pattern
-  $value = $null
-  if ($control.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$value) -and $value.Current.Value -ceq $Label) { return }
+  $value = $control.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+  if ($value.Current.Value -ceq $Label) { return }
   $control.SetFocus()
   $owned = [Collections.Generic.HashSet[int]]::new()
   [void]$owned.Add($process.Id)
@@ -100,6 +100,7 @@ function Select-Option([string] $Field, [string] $Label) {
       }
     } 'Native popup option was not visible through UIA.' 1600
     $option.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    Wait-Condition { $value.Current.Value -ceq $Label } 'Native popup selection was not committed.' 1200 | Out-Null
     return
   } catch {
     if ($expanded.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Expanded) { $expanded.Collapse() }
@@ -118,7 +119,11 @@ function Select-Option([string] $Field, [string] $Label) {
     Start-Sleep -Milliseconds 90
     & $ownsFocus
   } ('The owned native combo box did not acquire keyboard focus: ' + $Field) 3000 | Out-Null
-  $value = $control.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+  # An inaccessible WebView popup can remain open while UIA reports Collapsed.
+  # Close it before using arrows, which otherwise move only the popup highlight.
+  Assert-Condition (& $ownsFocus) 'The owned native combo box lost keyboard focus.'
+  [Windows.Forms.SendKeys]::SendWait('{ESC}')
+  Wait-Condition { & $ownsFocus } ('The owned native combo box lost focus after closing its popup: ' + $Field) 1500 | Out-Null
   for ($index = 0; $index -lt 53; $index++) {
     Assert-Condition (& $ownsFocus) 'The owned native combo box lost keyboard focus.'
     [Windows.Forms.SendKeys]::SendWait($(if ($index -eq 0) { '{HOME}' } else { '{DOWN}' }))

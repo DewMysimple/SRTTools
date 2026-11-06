@@ -129,7 +129,7 @@ Wait-Condition { (Read-MediaPosition) -gt 2550 } 'Cleared A/B loop still moved p
 Click-Control '暂停视频'
 Media-Pass 'validatedLoopAndClear'
 
-$stage = 'media-cancel-error-draft'
+$stage = 'media-picker-cancel'
 Click-Control '列表字幕 1'
 (Media-Field '开始时间').SetValue('00:00:01.125')
 Click-Control '应用编辑'
@@ -138,6 +138,7 @@ $picker = Get-Dialog '选择本地视频'
 [SubtitleSmokeNative]::DialogCommand($picker, 2)
 Wait-DialogClosed
 Wait-Condition { (Find-Text '^视频已暂停$') -and !(Media-FileWritable $mediaSource) } 'Cancelling the video picker lost the active video.' | Out-Null
+$stage = 'media-decode-error-draft'
 Click-Control '更换视频'
 Select-DialogPath '选择本地视频' $mediaBroken
 Wait-Condition { Find-Text '无法解码此视频' } 'Damaged video did not show a readable decode error.' | Out-Null
