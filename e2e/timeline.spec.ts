@@ -178,6 +178,59 @@ test('malformed SRT is inspectable but cannot export, recoverable timings and em
   await expect(page.getByLabel('开始时间')).toHaveValue('00:00:00.000');
 });
 
+test('desktop cancellation and write errors keep the draft and retry the same bytes', async ({ page }) => {
+  await page.addInitScript(text => {
+    const bytes = Array.from(new TextEncoder().encode(text));
+    const requests: { name?: string; bytes?: number[]; directory?: string | null }[] = [];
+    Object.assign(window, {
+      isTauri: true,
+      timelineSaveRequests: requests,
+      __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => undefined },
+      __TAURI_INTERNALS__: {
+        metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+        transformCallback: () => 1,
+        invoke: async (command: string, args: { singleSrt?: boolean; key?: string; name?: string; bytes?: number[]; directory?: string | null }) => {
+          if (command === 'plugin:event|listen') return 1;
+          if (command === 'plugin:event|unlisten') return null;
+          if (command === 'get_local_value') return args.key === 'settings' ? { theme: 'dark' } : null;
+          if (command === 'take_external_imports') return { files: [], rejected: 0, duplicates: 0 };
+          if (command === 'select_files' && args.singleSrt === true) {
+            return [{ name: '本地.srt', bytes, size: bytes.length, path: 'C:\\字幕\\本地.srt' }];
+          }
+          if (command === 'save_output') {
+            requests.push(args);
+            if (requests.length === 1) return null;
+            if (requests.length === 2) throw '拒绝写入目标目录';
+            return 'D:\\本地_timed (1).srt';
+          }
+          throw new Error(`Unexpected IPC: ${command}`);
+        },
+      },
+    });
+  }, fixture);
+  await page.setViewportSize({ width: 900, height: 620 });
+  await page.reload();
+  await page.getByRole('button', { name: '打开字幕' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByLabel('字幕正文').fill('导出重试 🙂');
+  await page.getByRole('button', { name: '应用编辑' }).click();
+  const save = page.getByRole('button', { name: '另存为' });
+  await save.click();
+  await expect(page.getByText('有未保存修改', { exact: true })).toBeVisible();
+  await save.click();
+  await expect(page.getByRole('alert')).toContainText('拒绝写入目标目录');
+  await expect(page.getByLabel('字幕正文')).toHaveValue('导出重试 🙂');
+  await save.click();
+  await expect(page.getByText('无未保存修改', { exact: true })).toBeVisible();
+  const calls = await page.evaluate(() => Reflect.get(window, 'timelineSaveRequests'));
+  expect(calls).toHaveLength(3);
+  expect(calls[0]).toEqual(calls[1]);
+  expect(calls[1]).toEqual(calls[2]);
+  expect(calls[2].directory).toBeNull();
+  expect(Buffer.from(calls[2].bytes).toString()).toContain('导出重试 🙂');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(900);
+});
+
 test('fixed viewport keeps the list and fitted/zoomed timeline bounded at 500, 5000 and 10000 cues', async ({ page }, info) => {
   const readings = [];
   await page.setViewportSize({ width: 900, height: 620 });

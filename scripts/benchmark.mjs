@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { build } from 'vite';
 import { PROJECT_ROOT, controlledPath, run, sha256 } from './release-common.mjs';
+import { benchmarkPath, benchmarkVersion } from './benchmark-paths.mjs';
 
 const options = Object.fromEntries(process.argv.slice(2).map(argument => {
   const match = /^--(phase|output|runs|warmups)=(.+)$/u.exec(argument);
@@ -19,13 +20,12 @@ const warmups = Number(options.warmups ?? 1);
 if (!Number.isInteger(runs) || runs < 5 || runs > 30 || !Number.isInteger(warmups) || warmups < 1 || warmups > 10) {
   throw new Error('Benchmark requires 5–30 measured runs and 1–10 warmups.');
 }
-const reportPath = await controlledPath(PROJECT_ROOT, path.resolve(PROJECT_ROOT, options.output ?? `docs/PERFORMANCE_v0.4.0_${phase}.json`));
-if (!reportPath.startsWith(path.join(PROJECT_ROOT, 'docs') + path.sep) || !reportPath.endsWith('.json')) {
+const reportPath = await controlledPath(PROJECT_ROOT, options.output ? path.resolve(PROJECT_ROOT, options.output) : benchmarkPath(phase));
+if (options.output && (!reportPath.startsWith(path.join(PROJECT_ROOT, 'docs') + path.sep) || !reportPath.endsWith('.json'))) {
   throw new Error('Benchmark reports must be JSON files under the project docs directory.');
 }
 const runtimeDirectory = await controlledPath(PROJECT_ROOT, path.join(PROJECT_ROOT, 'src-tauri', 'target', 'benchmark', `run-${randomUUID()}`));
-const packageInfo = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
-if (phase === 'baseline' && packageInfo.version !== '0.3.0') throw new Error('Refusing to overwrite the v0.3.0 baseline from a different application version. Use an isolated v0.3.0 core checkout and copy the benchmark scripts there to reproduce it.');
+if (phase === 'baseline' && benchmarkVersion !== '0.3.0') throw new Error('Refusing to overwrite the v0.3.0 baseline from a different application version. Use an isolated v0.3.0 core checkout and copy the benchmark scripts there to reproduce it.');
 const coreBefore = await run('git', ['diff', '--name-only', 'HEAD', '--', 'src/core', 'src/workers', 'src/services/processing-service.ts', 'src/app/tool-registry.ts'], { capture: true });
 if (phase === 'baseline' && coreBefore.trim()) throw new Error('Baseline requires unchanged v0.3.0 core/worker/registry files.');
 await fs.mkdir(runtimeDirectory, { recursive: true });
@@ -110,7 +110,7 @@ try {
   }
   const ioMeasurements = phase === 'current' ? await measureFixtureIo(runner) : [];
   const report = {
-    schemaVersion: 1, phase, measuredAt: new Date().toISOString(), sourceSha, appVersion: packageInfo.version, runtimeBundleSha256,
+    schemaVersion: 1, phase, measuredAt: new Date().toISOString(), sourceSha, appVersion: benchmarkVersion, runtimeBundleSha256,
     sourceCoreModified: Boolean(coreBefore.trim()),
     environment: {
       platform: os.platform(), release: os.release(), version: os.version(), architecture: os.arch(),

@@ -246,6 +246,7 @@ if (args.includes('--check')) {
         workflowChecks: native?.workflowChecks && recordedChecks(WORKFLOW_SMOKE_CHECKS, native.workflowChecks),
         timelineChecks: native?.timelineChecks && recordedChecks(TIMELINE_SMOKE_CHECKS, native.timelineChecks),
         setupChecks: setup?.checks && recordedChecks(SETUP_ACCEPTANCE_CHECKS, setup.checks),
+        installedNativeFailure: setup?.installedNativeFailure,
       }, null, 2) + '\n');
       throw error;
     } finally {

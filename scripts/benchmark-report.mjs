@@ -1,10 +1,11 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { PROJECT_ROOT, controlledPath } from './release-common.mjs';
+import { benchmarkPath, benchmarkVersion } from './benchmark-paths.mjs';
 
 if (process.argv.length > 2) throw new Error('Benchmark report takes no path arguments.');
 async function load(name) {
-  const file = await controlledPath(PROJECT_ROOT, path.join(PROJECT_ROOT, 'docs', `PERFORMANCE_v0.4.0_${name}.json`));
+  const file = await controlledPath(PROJECT_ROOT, benchmarkPath(name));
   return JSON.parse(await fs.readFile(file, 'utf8'));
 }
 const [baseline, current, before, browser] = await Promise.all([load('baseline'), load('current'), load('pre_optimization'), load('browser')]);
@@ -45,7 +46,9 @@ const memoryRows = sizes.map(count => {
   return `| ${count.toLocaleString('en-US')} | ${mib(item.inputBytes)} | ${mib(item.memory.sampledHeapMaxBytes)} | ${mib(item.memory.rssAfterBytes.median)} |`;
 }).join('\n');
 
-const markdown = `# v0.4.0 性能基线与稳定性报告
+const output = await controlledPath(PROJECT_ROOT, benchmarkPath('report'));
+const relativeReport = kind => path.relative(path.dirname(output), benchmarkPath(kind)).split(path.sep).join('/');
+const markdown = `# v${benchmarkVersion} 性能基线与稳定性报告
 
 此报告由 \`npm run benchmark:report\` 从机器报告生成，不以单次运行或固定倍数承诺性能。全部计时单位为毫秒，表中括号为五次有效运行的最小值–最大值；每组在相同输入上另有一次不计分预热。
 
@@ -74,7 +77,7 @@ npm run benchmark:browser
 npm run benchmark:report
 \`\`\`
 
-原始数据：[baseline](PERFORMANCE_v0.4.0_baseline.json)、[优化前](PERFORMANCE_v0.4.0_pre_optimization.json)、[当前引擎](PERFORMANCE_v0.4.0_current.json)、[真实 Worker](PERFORMANCE_v0.4.0_browser.json)。所有夹具由程序生成，包含简繁中文、emoji、HTML 标签、空白和多行正文；没有使用真实用户字幕。
+原始数据见 [baseline](${relativeReport('baseline')})、[优化前](${relativeReport('pre_optimization')})、[当前引擎](${relativeReport('current')}) 和 [真实 Worker](${relativeReport('browser')})。夹具由程序生成，包含简繁中文、emoji、HTML 标签、空白和多行正文。
 
 ## 单工具回归
 
@@ -154,6 +157,5 @@ ${ioRows || '| NOT_MEASURED | — | — | — |'}
 - \`npm run disk:report\` 单列 benchmark、Vite \`dist/\`、Rust \`target/\` 与唯一 \`release-output/\`；基准不把素材或报告拷入发布目录。
 - 此测量不证明 Windows 10、其它 DPI、无 WebView2 环境性能或原生权限行为。相应原生 UIA/安装验收应阅读本轮发布测试记录。性能数值不设共享 CI 硬门槛；输出等价、失败隔离、取消和资源释放是功能硬门槛。
 `;
-const output = await controlledPath(PROJECT_ROOT, path.join(PROJECT_ROOT, 'docs', 'PERFORMANCE_v0.4.0.md'));
 await fs.writeFile(output, markdown);
 console.log(path.relative(PROJECT_ROOT, output));

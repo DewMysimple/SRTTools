@@ -61,6 +61,7 @@ function Expand-ExportOptions {
 }
 
 function Select-Option([string] $Field, [string] $Label) {
+  $report.lastCombo = [ordered]@{ field=$Field; option=$Label }
   $ready = Wait-Condition {
     $candidate = Find-Control $Field $types::ComboBox
     if (!$candidate -or !$candidate.Current.IsEnabled) { return $false }
@@ -71,21 +72,53 @@ function Select-Option([string] $Field, [string] $Label) {
   } 'Native combo box was not ready for selection.'
   $control = $ready.control
   $expanded = $ready.pattern
-  $expanded.Expand()
-  $option = Wait-Condition {
-    $condition = New-Object System.Windows.Automation.AndCondition(
-      (Condition $element::NameProperty $Label),
-      (Condition $element::ControlTypeProperty $types::ListItem))
-    $candidate = $application.FindFirst($scope::Descendants, $condition)
-    if ($candidate) { return $candidate }
-    foreach ($window in $desktop.FindAll($scope::Children, $allElements)) {
-      if ($window.Current.ProcessId -eq $process.Id) {
-        $candidate = $window.FindFirst($scope::Descendants, $condition)
-        if ($candidate) { return $candidate }
-      }
+  $value = $null
+  if ($control.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$value) -and $value.Current.Value -ceq $Label) { return }
+  $control.SetFocus()
+  $owned = [Collections.Generic.HashSet[int]]::new()
+  [void]$owned.Add($process.Id)
+  $views = @(Get-CimInstance Win32_Process -Filter "name='msedgewebview2.exe'")
+  do {
+    $before = $owned.Count
+    foreach ($view in $views) {
+      if ($owned.Contains([int]$view.ParentProcessId)) { [void]$owned.Add([int]$view.ProcessId) }
     }
-  } 'Requested native combo-box option was not available.'
-  $option.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+  } while ($owned.Count -gt $before)
+  try {
+    $expanded.Expand()
+    $option = Wait-Condition {
+      $condition = New-Object System.Windows.Automation.AndCondition(
+        (Condition $element::NameProperty $Label),
+        (Condition $element::ControlTypeProperty $types::ListItem))
+      $candidate = $application.FindFirst($scope::Descendants, $condition)
+      if ($candidate) { return $candidate }
+      foreach ($window in $desktop.FindAll($scope::Children, $allElements)) {
+        if ($owned.Contains($window.Current.ProcessId)) {
+          $candidate = $window.FindFirst($scope::Descendants, $condition)
+          if ($candidate) { return $candidate }
+        }
+      }
+    } 'Native popup option was not visible through UIA.' 1600
+    $option.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    return
+  } catch {
+    if ($expanded.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Expanded) { $expanded.Collapse() }
+  }
+  # WebView2 sometimes keeps a native popup outside the UIA tree. Exercise
+  # the actual keyboard selection only while the owned combo has focus.
+  Add-Type -AssemblyName System.Windows.Forms
+  [void][SubtitleSmokeNative]::SetForegroundWindow($applicationHandle)
+  $control.SetFocus()
+  $value = $control.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+  for ($index = 0; $index -lt 53; $index++) {
+    Assert-Condition ([SubtitleSmokeNative]::GetForegroundWindow() -eq $applicationHandle -and
+      [System.Windows.Automation.Automation]::Compare($control, $element::FocusedElement)) 'The owned native combo box did not hold keyboard focus.'
+    [Windows.Forms.SendKeys]::SendWait($(if ($index -eq 0) { '{HOME}' } else { '{DOWN}' }))
+    Start-Sleep -Milliseconds 55
+    if ($value.Current.Value -ceq $Label) { return }
+  }
+  $report.lastCombo.finalValue = $value.Current.Value
+  throw ('Requested native combo-box option was not available: ' + $Field + ' / ' + $Label)
 }
 
 function Run-Success {

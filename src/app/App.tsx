@@ -33,11 +33,25 @@ export function App() {
 }
 function AppLayout() {
   const files = useAppStore(s => s.files); const busy = useAppStore(s => s.busy); const location = useLocation(); const navigate = useNavigate(); const { choose, loading } = useFileImport(); const [help, setHelp] = useState(false); const main = useRef<HTMLElement>(null);
+  const batchPickerKey = useRef<string>(null);
   useEffect(() => { main.current?.scrollTo({ top: 0 }); }, [location.pathname]);
+  useEffect(() => {
+    if (location.pathname !== '/batch' || !location.state?.chooseAfterTimeline || busy || loading || batchPickerKey.current === location.key) return;
+    batchPickerKey.current = location.key;
+    void choose();
+  }, [location, busy, loading, choose]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (busy || loading || event.defaultPrevented || event.altKey || event.metaKey || document.querySelector('dialog[open]')) return;
-      if (event.ctrlKey && event.key.toLowerCase() === 'o' && location.pathname !== '/timeline') { event.preventDefault(); if (event.shiftKey) navigate('/batch'); void choose(); }
+      if (event.ctrlKey && event.key.toLowerCase() === 'o') {
+        if (location.pathname === '/timeline') {
+          if (event.shiftKey) { event.preventDefault(); navigate('/batch', { state: { chooseAfterTimeline: true } }); }
+          return;
+        }
+        event.preventDefault();
+        if (event.shiftKey) navigate('/batch');
+        void choose();
+      }
       if (event.ctrlKey && event.key.toLowerCase() === 'f') { const field = document.getElementById('tool-search') ?? document.getElementById('param-find'); if (field) { event.preventDefault(); field.focus(); } }
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);

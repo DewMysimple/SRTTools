@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { build } from 'vite';
 import { chromium } from '@playwright/test';
 import { PROJECT_ROOT, controlledPath, inside, run } from './release-common.mjs';
+import { benchmarkPath } from './benchmark-paths.mjs';
 
 if (process.argv.length > 2) throw new Error('Browser benchmark takes no path arguments.');
 const sourceSha = (await run('git', ['rev-parse', 'HEAD'], { capture: true })).trim();
@@ -134,7 +135,7 @@ try {
       method: 'Production ES2022 Vite bundle of the actual application scheduler and Web Workers, served from a controlled temporary same-origin static server. Monotonic end-to-end elapsed time includes worker startup, structured cloning and progress delivery. Hashing is excluded. Main-page heap samples exclude worker heaps and are not a true peak. Input fixtures are generated in memory.',
     };
   });
-  const reportPath = await controlledPath(PROJECT_ROOT, path.join(PROJECT_ROOT, 'docs', 'PERFORMANCE_v0.4.0_browser.json'));
+  const reportPath = await controlledPath(PROJECT_ROOT, benchmarkPath('browser'));
   await fs.writeFile(reportPath, JSON.stringify({ schemaVersion: 1, measuredAt: new Date().toISOString(), sourceSha, browserVersion: browser.version(), ...report }, null, 2) + '\n');
   for (const result of report.results) console.log(`${result.id}: ${result.elapsedMs.median.toFixed(2)} ms (${result.elapsedMs.min.toFixed(2)}–${result.elapsedMs.max.toFixed(2)})`);
   console.log(`Cancellation median: ${report.cancellation.responseMs.median.toFixed(2)} ms; workers ${report.workerLifecycle.created}/${report.workerLifecycle.terminated}, active ${report.workerLifecycle.active}`);

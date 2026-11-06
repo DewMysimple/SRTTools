@@ -227,6 +227,20 @@ try {
   $report.failureStage=$stage; $report.failureKind=$_.Exception.GetBaseException().GetType().Name
   $message=$_.Exception.Message
   $report.failureReason=if ($message -match '(?i)([a-z]:[\\/]|\\\\)') { 'A controlled setup acceptance operation failed.' } else { $message.Substring(0,[Math]::Min(200,$message.Length)) }
+  if ($stage -eq 'installed-native-smoke' -and $childReport -and (Test-Path -LiteralPath $childReport -PathType Leaf)) {
+    try {
+      $childItem=Get-Item -LiteralPath $childReport
+      if ($childItem.Length -le 64KB -and !($childItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        $child=[IO.File]::ReadAllText($childReport)|ConvertFrom-Json
+        if ($child.producer -eq 'srttools-windows-smoke' -and $child.executableSha256 -eq $report.installedExecutableSha256) {
+          $report.installedNativeFailure=[ordered]@{
+            status=$child.status; stage=$child.failureStage; kind=$child.failureKind
+            reason=$child.failureReason; location=$child.failureLocation; combo=$child.lastCombo
+          }
+        }
+      }
+    } catch { }
+  }
 } finally {
   try {
     if($state){Assert-SetupWritersStopped $state}
