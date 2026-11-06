@@ -48,12 +48,19 @@ struct Permit(Arc<AtomicUsize>);
 
 impl Permit {
     fn acquire(counter: &Arc<AtomicUsize>, limit: usize) -> Option<Self> {
-        counter
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                (count < limit).then_some(count + 1)
-            })
-            .ok()?;
-        Some(Self(counter.clone()))
+        let mut count = counter.load(Ordering::Acquire);
+        while count < limit {
+            match counter.compare_exchange_weak(
+                count,
+                count + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return Some(Self(counter.clone())),
+                Err(current) => count = current,
+            }
+        }
+        None
     }
 }
 
@@ -425,6 +432,19 @@ fn serve(file: &mut MediaFile, request: &Request<Vec<u8>>) -> Response<Vec<u8>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_permits_release_their_bounded_slot() {
+        let count = Arc::new(AtomicUsize::new(0));
+        assert!(Permit::acquire(&count, 0).is_none());
+        let first = Permit::acquire(&count, 2).unwrap();
+        let second = Permit::acquire(&count, 2).unwrap();
+        assert!(Permit::acquire(&count, 2).is_none());
+        drop(first);
+        assert!(Permit::acquire(&count, 2).is_some());
+        drop(second);
+        assert_eq!(count.load(Ordering::Acquire), 0);
+    }
 
     #[test]
     fn rejects_unbounded_invalid_and_noncanonical_requests() {
