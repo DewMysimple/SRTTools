@@ -1,5 +1,9 @@
 # 测试与验收
 
+## v0.6.0 本地媒体预览
+
+Vitest 检查媒体事件、播放拒绝、缓冲、区间循环、快速 seek 和时间转换。Playwright 用 FFmpeg 生成的合成 WebM 实际解码并检查联动，Tauri IPC 在浏览器中模拟。Windows 另以真实原生文件选择器和 WebView2 加载合成 H.264/AAC MP4，核对独立于浏览器的两套包体验收。具体命令、环境、样本和结果见 [v0.6.0 QA](TIMELINE_V0.6_QA.md)。
+
 ## v0.5.0 字幕时间轴
 
 按[时间轴 QA](TIMELINE_V0.5_QA.md)核对时间数学、真实指针交互、SRT 字节、渲染测量、原生关闭保护及包体验收。既有工具箱 Chromium、Rust、原生工作流和发布安全门槛继续运行。

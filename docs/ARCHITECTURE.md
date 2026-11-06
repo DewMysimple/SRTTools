@@ -73,6 +73,12 @@ Subtitle Tools 是本地优先的 Tauri 2 桌面应用。React 负责界面，�
 
 区间索引、重叠布局和坐标函数与 UI 分离。列表按可见行挂载，时间轴按可见时段和行挂载，并在缩得很小时限制每个点击槽的块数。拖动期间使用临时坐标，松开后一次提交。设计与基线见[实施记录](TIMELINE_IMPLEMENTATION.md)。
 
+## 本地视频同步预览
+
+时间轴的 `MediaPreview` 负责本次关联、播放控件、叠加和 A/B。视频元素的帧时间或 `currentTime` 更新本地 `TimelineClock`，光标、时间和叠加单独订阅。画面隐藏或帧回调不可用时用 `timeupdate`。播放中的区间查询复用时间轴索引。相邻或重叠字幕按 `[startMs, endMs)` 查询，编辑命令和媒体时间通过独立入口更新。等待中的 seek 只保留最后一次用户意图，完成后读回视频的实际位置。
+
+`select_video` 在主窗口调用 Windows 原生选择器。后端检查本地驱动器和路径各级属性后锁定只读文件，生成仅在当前会话有效的 UUID。WebView2 的精确媒体源为 `http://srtmedia.localhost`，经 Tauri 自定义协议处理，单响应最多 1 MiB、同时至多四个请求。关闭、替换和主窗口卸载撤销令牌，页面重载或窗口销毁另有后端清理。WebView2 在发放首个令牌前禁用缓存，避免关闭后的重复 URL 从同页面缓存恢复。用户可见文件名和令牌仅在会话内存中保存。协议和实际 Range 测量见[媒体访问实验](MEDIA_ACCESS_SPIKE.md)。
+
 ## 批量隔离与取消
 
 调度器为每个文件维护 `queued / processing / success / failed / cancelled` 状态。一个文件的读取、解析、参数或 Worker 错误不会阻止后续文件。重试由工作区重新提交失败和取消项，已成功项可以保留。

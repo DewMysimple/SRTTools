@@ -1,6 +1,6 @@
 # Subtitle Tools
 
-Subtitle Tools 0.5.0 是轻量的 Windows 本地字幕工具箱，包含独立的字幕校时工作区。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕在本机处理。
+Subtitle Tools 0.6.0 是轻量的 Windows 本地字幕工具箱，包含独立的字幕时间轴和本地视频同步预览。使用 **Tauri 2 + React + Vite + TypeScript**，默认简体中文、浅色主题。字幕和视频在本机处理。
 
 操作流程：**选择文件 → 选择工具 → 设置参数 → 预览 → 确认导出**。默认生成 `原文件名_processed.ext`，不会覆盖原文件。
 
@@ -45,12 +45,22 @@ Subtitle Tools 0.5.0 是轻量的 Windows 本地字幕工具箱，包含独立�
 3. 用 Ctrl + 滚轮或缩放按钮查看细节，用「拟合全部」回到总览。空白轨道可拖动定位光标。重叠条目分行显示，可展开「保存前检查」查看诊断。
 4. 用 Ctrl + Z 撤销，Ctrl + Y 或 Ctrl + Shift + Z 重做。点击「另存为」导出新 SRT；切换文件、工作区或关闭窗口时，可保存并继续、放弃或取消。
 
-本版本支持独立 SRT 校时。本地视频同步预览安排在 v0.6.0。详见[时间轴功能](docs/FEATURES.md#字幕时间轴)。
+## 本地视频同步预览
+
+1. 在桌面版时间轴打开 SRT 后，点击「关联视频」，选择本地视频。优先使用 H.264/AAC 的 MP4，实际解码取决于 Windows 和 WebView2。
+2. 播放时画面叠加当前字幕，时间轴光标随视频推进。点击刻度、拖动光标、点击检查器的「定位字幕」，或输入毫秒时间，均可跳转视频。播放器提供倍速、音量和静音。
+3. 展开「A/B 区间循环」，填写 A、B 或用当前位置设置，点击「应用循环」。再次检查时可暂停或清除循环。小窗口可收起画面，并用「列表宽度」调整两侧比例。
+4. 更换或关闭视频后可继续编辑及另存 SRT。视频按会话只读打开，关闭后释放；保存只输出新的 SRT。超出视频时长的字幕仍可编辑和导出。
+
+![v0.6.0 视频预览与时间轴](docs/screenshots/media-preview-v060.png)
+
+WebM 和其他编码的实测范围、草稿行为及容量边界见[功能文档](docs/FEATURES.md#本地视频同步预览)。
 
 ## 运行环境
 
 - Windows 10 / 11，x64，Microsoft Edge WebView2 Runtime。
 - 开发：Node.js **24 LTS**、npm，Rust stable **MSVC** 工具链、Visual Studio C++ Build Tools 与 Windows SDK。
+- 媒体验收使用 PATH 上支持 `libx264`、`aac`、`libvpx` 的 FFmpeg 生成合成样本。安装后使用 SRTTools 由系统 WebView2 解码。
 - 原生构建依赖按 [Tauri 官方 Windows 环境说明](https://v2.tauri.app/start/prerequisites/) 安装。
 
 依赖已固定到 `package-lock.json` 和 `src-tauri/Cargo.lock`。前端使用 React 19、Vite 8、TypeScript 5.9 strict、Tailwind 4、Zustand、Zod、Lucide、JSZip；测试使用 Vitest 与 Playwright。
@@ -91,7 +101,7 @@ npm run release:verify
 npm run disk:report
 ```
 
-v0.5.0 的环境、验证范围与本地产物以[时间轴验收记录](docs/TIMELINE_V0.5_QA.md)为准。v0.4.0 的历史证据见[收尾报告](docs/RELEASE_CLOSURE_v0.4.0.md)。
+当前 Windows 媒体、时间轴与打包验收见 [v0.6.0 QA](docs/TIMELINE_V0.6_QA.md)。历史证据见 [v0.5.0 时间轴验收](docs/TIMELINE_V0.5_QA.md)和 [v0.4.0 收尾报告](docs/RELEASE_CLOSURE_v0.4.0.md)。
 
 最终文件统一放在项目的 `release-output/`：
 
@@ -105,7 +115,7 @@ release-output/
   build-info.json
 ```
 
-ZIP 包含顶层 `SRTTools/`，解压后运行其中的程序，仍需系统安装 Microsoft Edge WebView2 Runtime。安装器供当前用户安装。构建脚本会运行质量检查、真实 Tauri 打包和 ZIP 解压后的原生导入/处理/导出冒烟，全部通过才替换上一套结果。需要已登录的可交互 Windows 桌面，并先关闭正在使用的 Subtitle Tools；仅启动 EXE 不会被计为完整验收。
+ZIP 包含顶层 `SRTTools/`，解压后运行其中的程序，需要系统安装 Microsoft Edge WebView2 Runtime。安装器供当前用户安装。ZIP 解压版和 NSIS 安装版均通过原生工作流、时间轴和媒体检查后，才会替换上一套结果。验收需已登录的可交互 Windows 桌面，并先关闭正在使用的 Subtitle Tools。
 
 `release:win` 默认要求已提交的干净工作树，版本清单须一致；开发验收可显式使用 `npm run release:win -- --allow-dirty`，此状态会写入构建记录。成功后使用固定文件名替换旧版，并清理已复制验证的 NSIS 中间安装器和脚本暂存报告。Vite 的 `dist/` 与 Rust `target/` 是开发中间产物，最终交付目录始终是 `release-output/`。
 
