@@ -45,7 +45,8 @@ export function attachMediaSync(video: HTMLVideoElement, clock: TimelineClock, e
         else {
           const endMs = preview.range.endMs;
           stopPreview();
-          if (timeMs !== endMs && !video.ended) requestSeek(endMs);
+          // The presented frame can be at the end while the actual media clock is ahead.
+          if (!video.ended) requestSeek(endMs);
         }
       }
     } else if (loop && timeMs >= loop.endMs) requestSeek(loop.startMs);

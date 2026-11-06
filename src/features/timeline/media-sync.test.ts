@@ -177,6 +177,29 @@ describe('HTML media clock', () => {
     expect(video.currentTime).toBe(4);
   });
 
+  it('settles at the selected end even when the presented frame lags behind the live media clock', () => {
+    let present!: VideoFrameRequestCallback;
+    const video = Object.assign(new TestVideo(), {
+      requestVideoFrameCallback(callback: VideoFrameRequestCallback) {
+        present = callback;
+        return 1;
+      },
+      cancelVideoFrameCallback: vi.fn(),
+    });
+    const { controller, clock, tick } = setup(video);
+    video.emit('loadedmetadata');
+    controller.startPreview({ startMs: 1000, endMs: 2000 }, false);
+    tick();
+    video.emit('seeked');
+    video.currentTime = 2.012;
+    present(performance.now(), { mediaTime: 2 } as VideoFrameCallbackMetadata);
+    expect(video.paused).toBe(true);
+    tick();
+    video.emit('seeked');
+    expect(video.currentTime).toBe(2);
+    expect(clock.read()).toBe(2000);
+  });
+
   it('loops a selected range through media end and cancels queued playback on a manual seek', () => {
     const { video, controller, preview, tick } = setup();
     video.emit('loadedmetadata');
