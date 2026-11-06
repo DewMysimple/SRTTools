@@ -23,6 +23,7 @@ uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies]
 tauri-plugin-single-instance = "2"
+webview2-com = "0.39"
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_Globalization", "Win32_UI_Shell", "Win32_System_IO", "Win32_System_Ioctl"] }
 winreg = "0.56"
 

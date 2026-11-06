@@ -194,6 +194,58 @@ fn file_error(error: OpenFailure) -> String {
     }
 }
 
+#[cfg(windows)]
+fn protect_webview_cache(window: &WebviewWindow) -> Result<(), String> {
+    use std::{sync::mpsc, time::Duration};
+    use webview2_com::{CallDevToolsProtocolMethodCompletedHandler, CoTaskMemPWSTR};
+
+    // Blink may replay a previously buffered media URL inside the same WebView
+    // despite HTTP no-store. Force cache bypass before issuing the first grant.
+    for (method, arguments) in [
+        (
+            "Network.enable",
+            r#"{"maxTotalBufferSize":0,"maxResourceBufferSize":0}"#,
+        ),
+        ("Network.setCacheDisabled", r#"{"cacheDisabled":true}"#),
+    ] {
+        let (send, receive) = mpsc::channel();
+        window
+            .with_webview(move |view| {
+                let completion = send.clone();
+                let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(
+                    move |status, _| {
+                        let _ = completion.send(status.is_ok());
+                        Ok(())
+                    },
+                ));
+                let method = CoTaskMemPWSTR::from(method);
+                let arguments = CoTaskMemPWSTR::from(arguments);
+                let result = unsafe {
+                    view.controller().CoreWebView2().and_then(|webview| {
+                        webview.CallDevToolsProtocolMethod(
+                            *method.as_ref().as_pcwstr(),
+                            *arguments.as_ref().as_pcwstr(),
+                            &handler,
+                        )
+                    })
+                };
+                if result.is_err() {
+                    let _ = send.send(false);
+                }
+            })
+            .map_err(|_| "无法访问当前 WebView2。")?;
+        if receive.recv_timeout(Duration::from_secs(4)) != Ok(true) {
+            return Err("无法关闭当前 WebView2 的媒体缓存。请更新 WebView2 后重试。".into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn protect_webview_cache(_window: &WebviewWindow) -> Result<(), String> {
+    Err("本地视频预览需要 Windows WebView2。".into())
+}
+
 fn open_media(path: &Path) -> Result<(MediaFile, MediaSelection), String> {
     if !local_path(path) {
         return Err("请选择本地磁盘上的视频。网络路径或特殊设备路径不可用。".into());
@@ -258,6 +310,7 @@ pub(crate) async fn select_video(
             .into_path()
             .map_err(|_| "所选视频没有可用的本地路径。")?;
         let (opened, selection) = open_media(&path)?;
+        protect_webview_cache(&window)?;
         let mut current = access.current.lock().unwrap();
         if access.epoch.load(Ordering::Acquire) != epoch {
             return Ok(None);
