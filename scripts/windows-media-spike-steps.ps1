@@ -21,13 +21,14 @@ $assets = @($fixed | ForEach-Object {
     sha256=(Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash
   }
 })
-function Read-MediaProbe {
+function Read-MediaProbe([switch] $RequireClose) {
   $value = Wait-Condition {
     $node = Find-Control '媒体实测记录' $types::Edit
     if ($node) {
       $pattern = $null
       if ($node.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern) -and $pattern.Current.Value) {
-        return $pattern.Current.Value
+        $raw = $pattern.Current.Value
+        if (!$RequireClose -or ($raw | ConvertFrom-Json).PSObject.Properties['closedDenied']) { return $raw }
       }
     }
   } 'WebView2 media evidence did not become readable.' 120000
@@ -80,8 +81,7 @@ foreach ($asset in $assets) {
   }
   $stage = 'media-spike-close-' + $asset.id
   Click-Control '关闭测试视频'
-  [void](Get-Control '已撤销测试访问')
-  $sample.webView = Read-MediaProbe
+  $sample.webView = Read-MediaProbe -RequireClose
   Assert-Condition ($sample.webView.closedDenied -eq $true -and $sample.webView.responses[-1].status -eq 404) 'The closed media URL was not revoked.'
   $handle = [IO.File]::Open($asset.file,[IO.FileMode]::Open,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite)
   $handle.Dispose()
