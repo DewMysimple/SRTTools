@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {
-  MANAGED_BY, SETUP_ACCEPTANCE_CHECKS, TIMELINE_SMOKE_CHECKS, controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
+  MANAGED_BY, SETUP_ACCEPTANCE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS, controlledPath, fileRecords, makeStage, promoteRelease, removeTree,
   sha256, sourceFingerprint, run, validateStage, verifyRelease, walkFiles, withReleaseLock, writeMetadata, zipPortable, assertIdlePaths, releaseResources,
   validateWindowsQaReport,
 } from './release-common.mjs';
@@ -165,6 +165,54 @@ test('v0.5 promotion requires both timeline receipts and a matching installer ha
   await writeMetadata(candidate, info);
   await promoteRelease(root, candidate, stage);
   assert.equal((await verifyRelease(root, final)).version, '0.5.0');
+});
+
+test('v0.6 needs separate passing media receipts from the ZIP and the installed payload', async t => {
+  const root = await fixture(t);
+  const final = path.join(root, 'release-output');
+  const stage = await makeStage(root);
+  const candidate = path.join(stage, 'candidate');
+  const pass = keys => Object.fromEntries(keys.map(key => [key, true]));
+  const timelineChecks = pass(TIMELINE_SMOKE_CHECKS);
+  const mediaChecks = pass(MEDIA_SMOKE_CHECKS);
+  const smoke = { scenario: 'workflow', workflowChecks, timelineChecks };
+  for (const [directory, version] of [[final, '0.5.0'], [candidate, '0.6.0']]) {
+    const info = await release(root, directory, version, { version, smoke });
+    info.setupAcceptance = {
+      schemaVersion: 1, producer: 'srttools-setup-acceptance-v1', status: 'PASS', scenario: 'workflow',
+      version, installedVersion: version, setupSha256: await sha256(path.join(directory, 'SRTTools-Setup.exe')),
+      installedExecutableSha256: '1'.repeat(64), checks: pass(SETUP_ACCEPTANCE_CHECKS), workflowChecks, timelineChecks,
+    };
+    await writeMetadata(directory, info);
+  }
+  await verifyRelease(root, final);
+  const original = await fileRecords(root, final, await walkFiles(root, final));
+  const info = await verifyRelease(root, candidate, { requireSmoke: false });
+  for (const [field, diagnostic] of [['smoke', /ZIP-extracted media/u], ['setupAcceptance', /NSIS installed media/u]]) {
+    info.smoke.mediaChecks = mediaChecks;
+    info.setupAcceptance.mediaChecks = mediaChecks;
+    for (const key of MEDIA_SMOKE_CHECKS) {
+      for (const value of [undefined, false, 'true']) {
+        info[field].mediaChecks = { ...mediaChecks, [key]: value };
+        await writeMetadata(candidate, info);
+        await assert.rejects(promoteRelease(root, candidate, stage), diagnostic, key);
+      }
+    }
+    assert.deepEqual(await fileRecords(root, final, await walkFiles(root, final)), original);
+  }
+  info.setupAcceptance.mediaChecks = mediaChecks;
+  await writeMetadata(candidate, info);
+  await assert.rejects(promoteRelease(root, candidate, stage), /matching synthetic sample/u);
+  info.smoke.mediaSampleSha256 = info.setupAcceptance.mediaSampleSha256 = '2'.repeat(64);
+  info.smoke.mediaSampleBytes = 60_000;
+  info.setupAcceptance.mediaSampleBytes = 61_000;
+  await writeMetadata(candidate, info);
+  await assert.rejects(promoteRelease(root, candidate, stage), /matching synthetic sample/u);
+  assert.deepEqual(await fileRecords(root, final, await walkFiles(root, final)), original);
+  info.setupAcceptance.mediaSampleBytes = info.smoke.mediaSampleBytes;
+  await writeMetadata(candidate, info);
+  await promoteRelease(root, candidate, stage);
+  assert.equal((await verifyRelease(root, final)).version, '0.6.0');
 });
 
 test('an incomplete workflow candidate preserves the byte-identical v0.3 last success until full verification', async t => {

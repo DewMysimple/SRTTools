@@ -1,6 +1,6 @@
 [package]
 name = "subtitle-tools"
-version = "0.5.0"
+version = "0.6.0"
 description = "Local subtitle processing toolbox"
 authors = ["Subtitle Tools"]
 edition = "2021"

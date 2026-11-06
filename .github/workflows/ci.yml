@@ -25,6 +25,8 @@ jobs:
       - run: npm test
       - run: npm run test:release
       - run: npm run build
+      - name: Install synthetic media fixture encoder
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
 

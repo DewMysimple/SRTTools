@@ -2,8 +2,8 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import JSZip from 'jszip';
 import {
-  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, TIMELINE_SMOKE_CHECKS, SETUP_ACCEPTANCE_CHECKS,
-  controlledPath, exists, fileRecords, makeStage, requiresTimelineEvidence,
+  PROJECT_ROOT, MANAGED_BY, RELEASE_NAME, WORKFLOW_SMOKE_CHECKS, TIMELINE_SMOKE_CHECKS, MEDIA_SMOKE_CHECKS, SETUP_ACCEPTANCE_CHECKS,
+  controlledPath, exists, fileRecords, makeStage, requiresTimelineEvidence, requiresMediaEvidence,
   promoteRelease, recordPortableInventory, removeTree, run, sha256, validateStage, verifyRelease, walkFiles,
   withReleaseLock, writeMetadata, zipPortable, sourceFingerprint, assertIdlePaths, releaseResources,
   validateWindowsQaReport,
@@ -45,12 +45,16 @@ async function preflight() {
   const npmVersion = await npm(['--version'], { capture: true });
   const rustVersion = await run('rustc', ['--version'], { capture: true });
   const tauriVersion = await npm(['run', '--silent', 'tauri', '--', '--version'], { capture: true });
+  const fixtureEncoder = requiresMediaEvidence(version)
+    ? await run('ffmpeg', ['-version'], { capture: true }).then(output => output.split(/\s+/u)[2], problem => {
+      throw new Error('FFmpeg on PATH is required to generate synthetic release QA media.', { cause: problem });
+    }) : undefined;
   if (!rustVersion.match(/^rustc 1\.(\d+)/u) || Number(rustVersion.match(/^rustc 1\.(\d+)/u)[1]) < 90) throw new Error('Rust 1.90 or later is required.');
   const destination = path.join(root, RELEASE_NAME);
   if (await exists(destination)) await verifyRelease(root, destination);
   await assertIdlePaths([destination]);
   return { version, commit, branch, dirty: Boolean(status), sourceFingerprint: await sourceFingerprint(root),
-    node: process.versions.node, npm: npmVersion, rust: rustVersion, tauri: tauriVersion, target, resources };
+    node: process.versions.node, npm: npmVersion, rust: rustVersion, tauri: tauriVersion, fixtureEncoder, target, resources };
 }
 
 function peImports(bytes) {
@@ -220,6 +224,14 @@ if (args.includes('--check')) {
           timelineChecks: recordedChecks(TIMELINE_SMOKE_CHECKS, setup.timelineChecks),
           environment: setup.environment,
         };
+        if (requiresMediaEvidence(baseline.version)) {
+          info.smoke.mediaChecks = recordedChecks(MEDIA_SMOKE_CHECKS, smoke.mediaChecks);
+          info.setupAcceptance.mediaChecks = recordedChecks(MEDIA_SMOKE_CHECKS, setup.mediaChecks);
+          info.smoke.mediaSampleSha256 = smoke.mediaSampleSha256;
+          info.smoke.mediaSampleBytes = smoke.mediaSampleBytes;
+          info.setupAcceptance.mediaSampleSha256 = setup.mediaSampleSha256;
+          info.setupAcceptance.mediaSampleBytes = setup.mediaSampleBytes;
+        }
       }
       await writeMetadata(candidate, info);
       await verifyRelease(root, candidate);
@@ -245,7 +257,9 @@ if (args.includes('--check')) {
         scenario: native?.scenario,
         workflowChecks: native?.workflowChecks && recordedChecks(WORKFLOW_SMOKE_CHECKS, native.workflowChecks),
         timelineChecks: native?.timelineChecks && recordedChecks(TIMELINE_SMOKE_CHECKS, native.timelineChecks),
+        mediaChecks: native?.mediaChecks && recordedChecks(MEDIA_SMOKE_CHECKS, native.mediaChecks),
         setupChecks: setup?.checks && recordedChecks(SETUP_ACCEPTANCE_CHECKS, setup.checks),
+        installedMediaChecks: setup?.mediaChecks && recordedChecks(MEDIA_SMOKE_CHECKS, setup.mediaChecks),
         installedNativeFailure: setup?.installedNativeFailure,
       }, null, 2) + '\n');
       throw error;

@@ -20,6 +20,10 @@ export const TIMELINE_SMOKE_CHECKS = Object.freeze([
   'pickerAndSelection', 'dragAndUndoRedo', 'switchCancelRetainsDraft', 'closeCancelRetainsDraft',
   'exactEditAndBytes', 'closeSaveAndExit', 'sourceUnchanged',
 ]);
+export const MEDIA_SMOKE_CHECKS = Object.freeze([
+  'unicodePickerAndMetadata', 'seekAndOverlay', 'playPauseRateVolumeAndEnd', 'validatedLoopAndClear',
+  'cancelAndDecodeErrorRetainDraft', 'switchReopenAndRelease', 'sourcesUnchanged',
+]);
 export const SETUP_ACCEPTANCE_CHECKS = Object.freeze([
   'install', 'version', 'licenseResource', 'explorerDefaultOff', 'startup', 'import', 'process', 'export',
   'sourceUnchanged', 'gracefulShutdown', 'existingSettingsAndPresetsReadByApp', 'uninstall',
@@ -31,6 +35,11 @@ const HEADER_NAMES = ['SHA256SUMS.txt', 'build-info.json'];
 export function requiresTimelineEvidence(version) {
   const [major, minor] = version.split('.').map(Number);
   return major > 0 || minor >= 5;
+}
+
+export function requiresMediaEvidence(version) {
+  const [major, minor] = version.split('.').map(Number);
+  return major > 0 || minor >= 6;
 }
 
 export function validateWindowsQaReport(report, kind) {
@@ -262,6 +271,20 @@ export async function verifyRelease(root, directory, { requireSmoke = true } = {
       || !WORKFLOW_SMOKE_CHECKS.every(key => setup.workflowChecks?.[key] === true)
       || !TIMELINE_SMOKE_CHECKS.every(key => setup.timelineChecks?.[key] === true)) {
       throw new Error('This release has no passing NSIS installation and timeline acceptance evidence.');
+    }
+    if (requiresMediaEvidence(info.version)) {
+      if (!MEDIA_SMOKE_CHECKS.every(key => info.smoke.mediaChecks?.[key] === true)) {
+        throw new Error('This release has no passing ZIP-extracted media evidence.');
+      }
+      if (!MEDIA_SMOKE_CHECKS.every(key => setup.mediaChecks?.[key] === true)) {
+        throw new Error('This release has no passing NSIS installed media evidence.');
+      }
+      const { mediaSampleSha256, mediaSampleBytes } = info.smoke;
+      if (!/^[0-9A-F]{64}$/u.test(mediaSampleSha256) || !Number.isSafeInteger(mediaSampleBytes)
+        || mediaSampleBytes <= 0 || mediaSampleBytes > 1024 * 1024
+        || setup.mediaSampleSha256 !== mediaSampleSha256 || setup.mediaSampleBytes !== mediaSampleBytes) {
+        throw new Error('The ZIP and NSIS media receipts have no matching synthetic sample.');
+      }
     }
   }
   return info;

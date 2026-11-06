@@ -2,7 +2,7 @@
   [Parameter(Mandatory)][string] $ExePath,
   [Parameter(Mandatory)][string] $ReportPath,
   [string] $ExpectedVersion,
-  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline', 'media-spike')][string] $Scenario = 'smoke',
+  [ValidateSet('smoke', 'features', 'folder', 'explorer', 'workflow', 'closure', 'timeline', 'media')][string] $Scenario = 'smoke',
   [string] $NsisPath,
   [switch] $AllowUnavailableContextMenu,
   [switch] $PreserveExistingStore,
@@ -427,13 +427,16 @@ try {
     . (Join-Path $PSScriptRoot 'windows-explorer-steps.ps1')
   } elseif ($Scenario -eq 'workflow') {
     . (Join-Path $PSScriptRoot 'windows-workflow-steps.ps1')
+    if ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.6.0') {
+      . (Join-Path $PSScriptRoot 'windows-media-steps.ps1')
+    }
     if ($ExpectedVersion -and [version]$ExpectedVersion -ge [version]'0.5.0') {
       . (Join-Path $PSScriptRoot 'windows-timeline-steps.ps1')
     }
+  } elseif ($Scenario -eq 'media') {
+    . (Join-Path $PSScriptRoot 'windows-media-steps.ps1')
   } elseif ($Scenario -eq 'timeline') {
     . (Join-Path $PSScriptRoot 'windows-timeline-steps.ps1')
-  } elseif ($Scenario -eq 'media-spike') {
-    . (Join-Path $PSScriptRoot 'windows-media-spike-steps.ps1')
   } elseif ($Scenario -eq 'closure') {
     . (Join-Path $PSScriptRoot 'windows-closure-steps.ps1')
   } else {
