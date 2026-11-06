@@ -8,7 +8,7 @@
 
 只有主窗口的原生文件选择器能创建权限。Rust 校验本地盘、普通文件、扩展名、大小、路径组件和每层重解析点，并核对打开句柄的规范路径。该会话持有只读句柄，IPC 返回随机令牌与文件名。URL 仅接受固定来源和一个令牌路径段。新选择替换旧句柄，关闭、主页面重新加载或窗口销毁撤销。浏览器收到的读取响应单次最多 1 MiB，支持 GET 单 Range 与 HEAD，越界或畸形 Range 返回 416。[HTTP Range](https://www.rfc-editor.org/rfc/rfc9110.html#name-range-requests)
 
-UUID 使用既有锁定并已有 NOTICE 的 `uuid 1.29.0`。实验未添加媒体运行时、外部服务或分发资源。QA 的 DevTools 监听只在隔离合成样本测试中启用，连接前核对回环地址与自有 WebView2 进程。[WebView2 调试](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/remote-debugging-desktop)
+UUID 使用既有锁定并已有 NOTICE 的 `uuid 1.29.0`。实验未添加媒体运行时、外部服务或分发资源。第一轮 QA 尝试用隔离 WebView2 的 DevTools 端口抓取响应，但本机正式构建的自有 WebView2 进程没有启用指定端口。改用实验包内的 HTML5 事件记录与原生协议响应观测，由 Windows UI Automation 读取。记录仅含状态、时长、响应头和长度。[WebView2 调试](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/remote-debugging-desktop)
 
 ## 验证状态
 
